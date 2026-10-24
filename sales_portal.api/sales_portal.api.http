@@ -1,0 +1,6 @@
+@sales_portal.api_HostAddress = http://localhost:5065
+
+GET {{sales_portal.api_HostAddress}}
+Accept: application/json
+
+###
