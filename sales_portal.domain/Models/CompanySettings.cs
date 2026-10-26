@@ -12,7 +12,7 @@ namespace sales_portal.domain.Models
         public string NameAr { get; set; } = default!;
         public string Tagline { get; set; } = default!;
         public string TaglineAr { get; set; } = default!;
-        public string FormCode { get; set; } = "TF-06-01";
+        public string FormCode { get; set; } = "TF-06-01A";
         public string ReferencePrefix { get; set; } = "YL";
         public string? Address { get; set; }
         public string? Phone { get; set; }

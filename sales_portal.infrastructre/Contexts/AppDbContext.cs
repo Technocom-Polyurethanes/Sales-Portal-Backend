@@ -20,7 +20,6 @@ public class AppDbContext : DbContext
     public DbSet<OfferLinePackaging> OfferLinePackagings => Set<OfferLinePackaging>();
     public DbSet<OfferDeliveryBatch> OfferDeliveryBatches => Set<OfferDeliveryBatch>();
     public DbSet<OfferDeliveryAllocation> OfferDeliveryAllocations => Set<OfferDeliveryAllocation>();
-    public DbSet<OfferPaymentMilestone> OfferPaymentMilestones => Set<OfferPaymentMilestone>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,5 +27,23 @@ public class AppDbContext : DbContext
 
         // Automatically applies all IEntityTypeConfiguration<T> classes in this assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in ChangeTracker.Entries<BaseEntity>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if (entry.Entity.CreatedAt == default) entry.Entity.CreatedAt = now;
+                entry.Entity.UpdatedAt = now;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+        return base.SaveChangesAsync(cancellationToken);
     }
 }

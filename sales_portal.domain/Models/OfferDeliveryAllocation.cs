@@ -10,8 +10,20 @@ namespace sales_portal.domain.Models
     {
         public Guid DeliveryBatchId { get; set; }
         public OfferDeliveryBatch DeliveryBatch { get; set; } = default!;
+
+        public Guid OfferLineId { get; set; }
+        public OfferLine OfferLine { get; set; } = default!;
+
+        public Guid OfferLinePackagingId { get; set; }
+        public OfferLinePackaging OfferLinePackaging { get; set; } = default!;
+
+        // Snapshot fields for fast PDF & table rendering
         public Guid MaterialId { get; set; }
-        public Material Material { get; set; } = default!;
+        public Guid PackageTypeId { get; set; }
+        public string PackageTypeName { get; set; } = default!;
+        public string PackageTypeNameAr { get; set; } = default!;
+        public decimal WeightPerPackageKg { get; set; }
         public int Packages { get; set; }
+        public decimal TotalWeightKg { get; set; } // Packages * WeightPerPackageKg
     }
 }

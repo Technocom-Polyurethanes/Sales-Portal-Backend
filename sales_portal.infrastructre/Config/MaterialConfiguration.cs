@@ -23,5 +23,8 @@ public class MaterialConfiguration : IEntityTypeConfiguration<Material>
 
         builder.Property(m => m.ReferencePricePerKg)
             .HasColumnType("decimal(18,4)");
+
+        builder.Property(m => m.DefaultWeightKg)
+            .HasColumnType("decimal(18,3)");
     }
 }

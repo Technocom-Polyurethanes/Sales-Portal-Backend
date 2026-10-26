@@ -14,8 +14,12 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.HasIndex(o => o.Reference)
+        builder.HasIndex(o => new { o.Reference, o.Version })
             .IsUnique();
+
+        // Use PostgreSQL's system column as the concurrency token.
+        builder.Property<uint>("xmin")
+            .IsRowVersion();
 
         // Map SnapshotJson column as PostgreSQL jsonb type
         builder.Property(o => o.SnapshotJson)

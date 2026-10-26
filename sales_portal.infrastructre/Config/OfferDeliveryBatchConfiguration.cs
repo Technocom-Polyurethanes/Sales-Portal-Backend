@@ -10,12 +10,37 @@ public class OfferDeliveryBatchConfiguration : IEntityTypeConfiguration<OfferDel
     {
         builder.HasKey(b => b.Id);
 
-        // FIX 2: Index on foreign key for performance
+        // Index on foreign key for performance
         builder.HasIndex(b => b.OfferId);
 
         builder.HasMany(b => b.Allocations)
-            .WithOne()
+            .WithOne(a => a.DeliveryBatch)
             .HasForeignKey(a => a.DeliveryBatchId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class OfferDeliveryAllocationConfiguration : IEntityTypeConfiguration<OfferDeliveryAllocation>
+{
+    public void Configure(EntityTypeBuilder<OfferDeliveryAllocation> builder)
+    {
+        builder.HasKey(a => a.Id);
+
+        builder.HasIndex(a => a.DeliveryBatchId);
+        builder.HasIndex(a => a.OfferLineId);
+        builder.HasIndex(a => a.OfferLinePackagingId);
+
+        builder.Property(a => a.WeightPerPackageKg).HasColumnType("decimal(18,3)");
+        builder.Property(a => a.TotalWeightKg).HasColumnType("decimal(18,3)");
+
+        builder.HasOne(a => a.OfferLine)
+            .WithMany()
+            .HasForeignKey(a => a.OfferLineId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(a => a.OfferLinePackaging)
+            .WithMany()
+            .HasForeignKey(a => a.OfferLinePackagingId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

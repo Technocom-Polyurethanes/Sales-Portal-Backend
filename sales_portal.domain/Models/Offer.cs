@@ -21,6 +21,7 @@ namespace sales_portal.domain.Models
         public User CreatedBy { get; set; } = default!;
 
         public string? Attention { get; set; }                     // editable contact person printed on the PDF
+        public string? TaxId { get; set; }                         // printed in the PDF Bill-To block
         public DateOnly IssueDate { get; set; }
         public DateOnly DueDate { get; set; }
         public Guid PaymentTermId { get; set; }
@@ -46,6 +47,5 @@ namespace sales_portal.domain.Models
 
         public ICollection<OfferLine> Lines { get; set; } = new List<OfferLine>();
         public ICollection<OfferDeliveryBatch> DeliveryBatches { get; set; } = new List<OfferDeliveryBatch>();
-        public ICollection<OfferPaymentMilestone> PaymentMilestones { get; set; } = new List<OfferPaymentMilestone>();
     }
 }

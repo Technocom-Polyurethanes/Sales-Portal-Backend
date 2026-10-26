@@ -17,7 +17,7 @@ namespace sales_portal.infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.32")
+                .HasAnnotation("ProductVersion", "8.0.33")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -222,6 +222,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("phone");
 
+                    b.Property<string>("TaxId")
+                        .HasColumnType("text")
+                        .HasColumnName("tax_id");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -254,6 +258,14 @@ namespace sales_portal.infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<Guid?>("DefaultPackageTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("default_package_type_id");
+
+                    b.Property<decimal>("DefaultWeightKg")
+                        .HasColumnType("decimal(18,3)")
+                        .HasColumnName("default_weight_kg");
 
                     b.Property<string>("ErpNextItemCode")
                         .HasColumnType("text")
@@ -290,6 +302,9 @@ namespace sales_portal.infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_materials");
+
+                    b.HasIndex("DefaultPackageTypeId")
+                        .HasDatabaseName("ix_materials_default_package_type_id");
 
                     b.HasIndex("ItemCode")
                         .IsUnique()
@@ -403,6 +418,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("tax_amount");
 
+                    b.Property<string>("TaxId")
+                        .HasColumnType("text")
+                        .HasColumnName("tax_id");
+
                     b.Property<decimal>("TaxPercent")
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("tax_percent");
@@ -419,6 +438,12 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("version");
 
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id")
                         .HasName("pk_offers");
 
@@ -434,9 +459,9 @@ namespace sales_portal.infrastructure.Migrations
                     b.HasIndex("PaymentTermId")
                         .HasDatabaseName("ix_offers_payment_term_id");
 
-                    b.HasIndex("Reference")
+                    b.HasIndex("Reference", "Version")
                         .IsUnique()
-                        .HasDatabaseName("ix_offers_reference");
+                        .HasDatabaseName("ix_offers_reference_version");
 
                     b.ToTable("offers", (string)null);
                 });
@@ -456,21 +481,47 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("delivery_batch_id");
 
-                    b.Property<Guid>("DeliveryBatchId1")
-                        .HasColumnType("uuid")
-                        .HasColumnName("delivery_batch_id1");
-
                     b.Property<Guid>("MaterialId")
                         .HasColumnType("uuid")
                         .HasColumnName("material_id");
+
+                    b.Property<Guid>("OfferLineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("offer_line_id");
+
+                    b.Property<Guid>("OfferLinePackagingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("offer_line_packaging_id");
+
+                    b.Property<Guid>("PackageTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_type_id");
+
+                    b.Property<string>("PackageTypeName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("package_type_name");
+
+                    b.Property<string>("PackageTypeNameAr")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("package_type_name_ar");
 
                     b.Property<int>("Packages")
                         .HasColumnType("integer")
                         .HasColumnName("packages");
 
+                    b.Property<decimal>("TotalWeightKg")
+                        .HasColumnType("decimal(18,3)")
+                        .HasColumnName("total_weight_kg");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<decimal>("WeightPerPackageKg")
+                        .HasColumnType("decimal(18,3)")
+                        .HasColumnName("weight_per_package_kg");
 
                     b.HasKey("Id")
                         .HasName("pk_offer_delivery_allocations");
@@ -478,11 +529,11 @@ namespace sales_portal.infrastructure.Migrations
                     b.HasIndex("DeliveryBatchId")
                         .HasDatabaseName("ix_offer_delivery_allocations_delivery_batch_id");
 
-                    b.HasIndex("DeliveryBatchId1")
-                        .HasDatabaseName("ix_offer_delivery_allocations_delivery_batch_id1");
+                    b.HasIndex("OfferLineId")
+                        .HasDatabaseName("ix_offer_delivery_allocations_offer_line_id");
 
-                    b.HasIndex("MaterialId")
-                        .HasDatabaseName("ix_offer_delivery_allocations_material_id");
+                    b.HasIndex("OfferLinePackagingId")
+                        .HasDatabaseName("ix_offer_delivery_allocations_offer_line_packaging_id");
 
                     b.ToTable("offer_delivery_allocations", (string)null);
                 });
@@ -643,7 +694,7 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnName("updated_at");
 
                     b.Property<decimal>("WeightPerPackageKg")
-                        .HasColumnType("numeric")
+                        .HasColumnType("decimal(18,3)")
                         .HasColumnName("weight_per_package_kg");
 
                     b.HasKey("Id")
@@ -656,51 +707,6 @@ namespace sales_portal.infrastructure.Migrations
                         .HasDatabaseName("ix_offer_line_packagings_package_type_id");
 
                     b.ToTable("offer_line_packagings", (string)null);
-                });
-
-            modelBuilder.Entity("sales_portal.domain.Models.OfferPaymentMilestone", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("AmountDue")
-                        .HasColumnType("numeric")
-                        .HasColumnName("amount_due");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("DueDateOrEvent")
-                        .HasColumnType("text")
-                        .HasColumnName("due_date_or_event");
-
-                    b.Property<Guid>("OfferId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("offer_id");
-
-                    b.Property<decimal>("PercentageOrFixed")
-                        .HasColumnType("numeric")
-                        .HasColumnName("percentage_or_fixed");
-
-                    b.Property<string>("PhaseDescription")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("phase_description");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_offer_payment_milestones");
-
-                    b.HasIndex("OfferId")
-                        .HasDatabaseName("ix_offer_payment_milestones_offer_id");
-
-                    b.ToTable("offer_payment_milestones", (string)null);
                 });
 
             modelBuilder.Entity("sales_portal.domain.Models.PackageType", b =>
@@ -924,6 +930,16 @@ namespace sales_portal.infrastructure.Migrations
                     b.Navigation("DefaultPaymentTerm");
                 });
 
+            modelBuilder.Entity("sales_portal.domain.Models.Material", b =>
+                {
+                    b.HasOne("sales_portal.domain.Models.PackageType", "DefaultPackageType")
+                        .WithMany()
+                        .HasForeignKey("DefaultPackageTypeId")
+                        .HasConstraintName("fk_materials_package_types_default_package_type_id");
+
+                    b.Navigation("DefaultPackageType");
+                });
+
             modelBuilder.Entity("sales_portal.domain.Models.Offer", b =>
                 {
                     b.HasOne("sales_portal.domain.Models.User", "CreatedBy")
@@ -963,30 +979,32 @@ namespace sales_portal.infrastructure.Migrations
 
             modelBuilder.Entity("sales_portal.domain.Models.OfferDeliveryAllocation", b =>
                 {
-                    b.HasOne("sales_portal.domain.Models.OfferDeliveryBatch", null)
+                    b.HasOne("sales_portal.domain.Models.OfferDeliveryBatch", "DeliveryBatch")
                         .WithMany("Allocations")
                         .HasForeignKey("DeliveryBatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_offer_delivery_allocations_offer_delivery_batches_delivery_");
 
-                    b.HasOne("sales_portal.domain.Models.OfferDeliveryBatch", "DeliveryBatch")
+                    b.HasOne("sales_portal.domain.Models.OfferLine", "OfferLine")
                         .WithMany()
-                        .HasForeignKey("DeliveryBatchId1")
+                        .HasForeignKey("OfferLineId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_offer_delivery_allocations_offer_delivery_batches_delivery_1");
+                        .HasConstraintName("fk_offer_delivery_allocations_offer_lines_offer_line_id");
 
-                    b.HasOne("sales_portal.domain.Models.Material", "Material")
+                    b.HasOne("sales_portal.domain.Models.OfferLinePackaging", "OfferLinePackaging")
                         .WithMany()
-                        .HasForeignKey("MaterialId")
+                        .HasForeignKey("OfferLinePackagingId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_offer_delivery_allocations_materials_material_id");
+                        .HasConstraintName("fk_offer_delivery_allocations_offer_line_packagings_offer_line");
 
                     b.Navigation("DeliveryBatch");
 
-                    b.Navigation("Material");
+                    b.Navigation("OfferLine");
+
+                    b.Navigation("OfferLinePackaging");
                 });
 
             modelBuilder.Entity("sales_portal.domain.Models.OfferDeliveryBatch", b =>
@@ -1043,18 +1061,6 @@ namespace sales_portal.infrastructure.Migrations
                     b.Navigation("PackageType");
                 });
 
-            modelBuilder.Entity("sales_portal.domain.Models.OfferPaymentMilestone", b =>
-                {
-                    b.HasOne("sales_portal.domain.Models.Offer", "Offer")
-                        .WithMany("PaymentMilestones")
-                        .HasForeignKey("OfferId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_offer_payment_milestones_offers_offer_id");
-
-                    b.Navigation("Offer");
-                });
-
             modelBuilder.Entity("sales_portal.domain.Models.WorkspaceSettings", b =>
                 {
                     b.HasOne("sales_portal.domain.Models.PaymentTerm", "DefaultPaymentTerm")
@@ -1075,8 +1081,6 @@ namespace sales_portal.infrastructure.Migrations
                     b.Navigation("DeliveryBatches");
 
                     b.Navigation("Lines");
-
-                    b.Navigation("PaymentMilestones");
                 });
 
             modelBuilder.Entity("sales_portal.domain.Models.OfferDeliveryBatch", b =>

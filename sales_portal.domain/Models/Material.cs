@@ -15,5 +15,10 @@ namespace sales_portal.domain.Models
         public decimal? ReferencePricePerKg { get; set; }
         public string Uom { get; set; } = "kg";
         public bool IsActive { get; set; } = true;
+
+        // Defaults used by the frontend when the material is selected on an offer line.
+        public Guid? DefaultPackageTypeId { get; set; }
+        public PackageType? DefaultPackageType { get; set; }
+        public decimal DefaultWeightKg { get; set; } = 210m;
     }
 }

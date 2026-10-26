@@ -44,56 +44,118 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        // 3. Seed Default Customer (Duravit Egypt)
-        if (!await context.Customers.AnyAsync())
+        // 3. Seed Package Types
+        var packageTypeSeeds = new[]
         {
-            context.Customers.Add(new Customer
+            new PackageType { Name = "Drum", NameAr = "برميل", IsActive = true },
+            new PackageType { Name = "Pail", NameAr = "جركن", IsActive = true },
+            new PackageType { Name = "IBC Tank", NameAr = "تانك IBC", IsActive = true }
+        };
+
+        foreach (var packageType in packageTypeSeeds)
+        {
+            if (!await context.PackageTypes.AnyAsync(pt => pt.Name == packageType.Name))
+            {
+                context.PackageTypes.Add(packageType);
+            }
+        }
+
+        await context.SaveChangesAsync();
+
+        var drumPackageType = await context.PackageTypes.FirstAsync(pt => pt.Name == "Drum");
+
+        // 4. Seed Default Customer (Duravit Egypt)
+        var duravit = await context.Customers.FirstOrDefaultAsync(c => c.CustomerCode == "CUST-DURAVIT");
+        if (duravit == null)
+        {
+            duravit = new Customer
             {
                 CustomerCode = "CUST-DURAVIT",
                 Name = "Duravit Egypt for Sanitary Ware",
                 NameAr = "شركة ديورافيت إيجيبت لصناعة الأدوات الصحية",
+                TaxId = "200-145-890",
                 ContactPerson = "Nader William",
                 City = "Badr City",
                 Address = "10th of Ramadan City, Egypt",
                 DefaultPaymentTermId = defaultTerm.Id,
                 DefaultCurrency = "EGP"
-            });
-            await context.SaveChangesAsync();
+            };
+            context.Customers.Add(duravit);
         }
-
-        // 4. Seed Package Types & Materials (Polyol & Iso)
-        if (!await context.PackageTypes.AnyAsync())
+        else
         {
-            context.PackageTypes.Add(new PackageType { Name = "Drum", NameAr = "برميل", IsActive = true });
-            await context.SaveChangesAsync();
+            if (string.IsNullOrWhiteSpace(duravit.TaxId))
+            {
+                duravit.TaxId = "200-145-890";
+            }
+
+            duravit.DefaultPaymentTermId ??= defaultTerm.Id;
         }
 
-        if (!await context.Materials.AnyAsync())
+        await context.SaveChangesAsync();
+
+        // 5. Seed Materials (Polyol & Iso) with default packaging information
+        var materialSeeds = new[]
         {
-            context.Materials.AddRange(
-                new Material
-                {
-                    ItemCode = "50001",
-                    Name = "DALTORIM EG 26200 - D",
-                    Category = "Polyol",
-                    ReferencePricePerKg = 162.00m,
-                    Uom = "kg",
-                    IsActive = true
-                },
-                new Material
-                {
-                    ItemCode = "30001",
-                    Name = "SUPRASEC 5005T",
-                    Category = "Iso",
-                    ReferencePricePerKg = 162.00m,
-                    Uom = "kg",
-                    IsActive = true
-                }
-            );
-            await context.SaveChangesAsync();
+            new Material
+            {
+                ItemCode = "50001",
+                Name = "DALTORIM EG 26200 - D",
+                Category = "Polyol",
+                ReferencePricePerKg = 162.00m,
+                Uom = "kg",
+                IsActive = true,
+                DefaultPackageTypeId = drumPackageType.Id,
+                DefaultWeightKg = 210m
+            },
+            new Material
+            {
+                ItemCode = "30001",
+                Name = "SUPRASEC 5005T",
+                Category = "Iso",
+                ReferencePricePerKg = 162.00m,
+                Uom = "kg",
+                IsActive = true,
+                DefaultPackageTypeId = drumPackageType.Id,
+                DefaultWeightKg = 250m
+            }
+        };
+
+        foreach (var materialSeed in materialSeeds)
+        {
+            if (!await context.Materials.AnyAsync(m => m.ItemCode == materialSeed.ItemCode))
+            {
+                context.Materials.Add(materialSeed);
+            }
         }
 
-        // 5. Seed Bank Accounts (QNB & SAIB from your email template)
+        await context.SaveChangesAsync();
+
+        // Keep existing seeded material rows aligned with the current defaults.
+        // Only fill missing values so later edits made in the UI are not overwritten.
+        var daltorim = await context.Materials.FirstOrDefaultAsync(m => m.ItemCode == "50001");
+        if (daltorim != null)
+        {
+            daltorim.DefaultPackageTypeId ??= drumPackageType.Id;
+            if (daltorim.DefaultWeightKg <= 0m)
+            {
+                daltorim.DefaultWeightKg = 210m;
+            }
+        }
+
+        var suprasec = await context.Materials.FirstOrDefaultAsync(m => m.ItemCode == "30001");
+        if (suprasec != null)
+        {
+            suprasec.DefaultPackageTypeId ??= drumPackageType.Id;
+            if (suprasec.DefaultWeightKg <= 0m)
+            {
+                suprasec.DefaultWeightKg = 250m;
+            }
+        }
+
+        await context.SaveChangesAsync();
+
+        // 6. Seed Bank Accounts (QNB & SAIB)
         if (!await context.BankAccounts.AnyAsync())
         {
             context.BankAccounts.AddRange(
@@ -125,7 +187,7 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        // 6. Seed Company Settings
+        // 7. Seed Company Settings
         if (!await context.CompanySettings.AnyAsync())
         {
             context.CompanySettings.Add(new CompanySettings

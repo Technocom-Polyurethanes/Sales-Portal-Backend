@@ -12,6 +12,7 @@ namespace sales_portal.domain.Models
         public string? ErpNextId { get; set; }
         public string Name { get; set; } = default!;              // English name
         public string? NameAr { get; set; }
+        public string? TaxId { get; set; }                        // prefills the offer's Bill-To tax id
         public string? ContactPerson { get; set; }                 // prefills "Attention"
         public string? Email { get; set; }
         public string? Phone { get; set; }
