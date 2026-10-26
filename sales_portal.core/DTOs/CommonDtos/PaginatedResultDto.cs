@@ -1,6 +1,6 @@
 namespace sales_portal.core.DTOs;
 
-public class PagedResult<T>
+public class PaginatedResultDto<T>
 {
     public List<T> Items { get; set; } = new();
     public int Page { get; set; }

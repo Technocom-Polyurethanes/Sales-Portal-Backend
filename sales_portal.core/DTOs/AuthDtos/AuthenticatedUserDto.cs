@@ -2,20 +2,7 @@ using sales_portal.domain.Enums;
 
 namespace sales_portal.core.DTOs;
 
-public class LoginRequestDto
-{
-    public string Username { get; set; } = string.Empty;
-    public string Password { get; set; } = string.Empty;
-}
-
-public class LoginResponseDto
-{
-    public string Token { get; set; } = string.Empty;
-    public DateTimeOffset ExpiresAt { get; set; }
-    public UserDto User { get; set; } = new();
-}
-
-public class UserDto
+public class AuthenticatedUserDto
 {
     public Guid Id { get; set; }
     public string Username { get; set; } = string.Empty;

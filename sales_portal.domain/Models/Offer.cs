@@ -35,6 +35,7 @@ namespace sales_portal.domain.Models
         // Money calculations (no extra expenses, advance payment, or balance due)
         public decimal Subtotal { get; set; }
         public decimal OrderDiscount { get; set; }
+        public decimal OrderDiscountPercent { get; set; }
         public decimal TaxPercent { get; set; }
         public decimal TaxAmount { get; set; }
         public bool OtherTaxEnabled { get; set; }

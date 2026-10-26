@@ -29,6 +29,7 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
         // High precision decimal formatting for currency and tax fields
         builder.Property(o => o.Subtotal).HasColumnType("decimal(18,2)");
         builder.Property(o => o.OrderDiscount).HasColumnType("decimal(18,2)");
+        builder.Property(o => o.OrderDiscountPercent).HasColumnType("decimal(5,2)");
         builder.Property(o => o.TaxPercent).HasColumnType("decimal(5,2)");
         builder.Property(o => o.TaxAmount).HasColumnType("decimal(18,2)");
         builder.Property(o => o.OtherTaxPercent).HasColumnType("decimal(5,2)");

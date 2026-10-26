@@ -1,27 +1,28 @@
 using System.Globalization;
 using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
+using sales_portal.core.IService;
 using sales_portal.domain.Enums;
 
 namespace sales_portal.core.Services;
 
-public class OfferCalculator
+public class OfferCalculator : IOfferCalculator
 {
     private const string OtherTaxNameAr = "ضريبة أرباح تجارية و صناعية (1%)";
     private const string OtherTaxNameEn = "Commercial and industrial profit tax (1%)";
 
-    private readonly OfferDocumentBuilder _documentBuilder;
+    private readonly IOfferDocumentBuilder _documentBuilder;
 
-    public OfferCalculator(OfferDocumentBuilder documentBuilder)
+    public OfferCalculator(IOfferDocumentBuilder documentBuilder)
     {
         _documentBuilder = documentBuilder;
     }
 
-    public OfferCalculationResultDto Calculate(OfferDraftDto draft, OfferCatalog catalog)
+    public OfferCalculateResponseDto Calculate(OfferDraftDto draft, OfferCatalog catalog)
     {
         NormalizeIds(draft);
 
-        var result = new OfferCalculationResultDto { Draft = draft };
+        var result = new OfferCalculateResponseDto { Draft = draft };
 
         if (catalog.Customer == null)
         {
@@ -84,7 +85,7 @@ public class OfferCalculator
                 var weightPerPackage = Math.Max(0m, draftPackaging.WeightPerPackageKg);
                 var rowWeight = MoneyMath.Round3(packages * weightPerPackage);
 
-                calculatedLine.Packaging.Add(new CalculatedPackagingDto
+                calculatedLine.Packaging.Add(new CalculatedLinePackagingDto
                 {
                     Id = draftPackaging.Id,
                     SortOrder = draftPackaging.SortOrder,
@@ -107,7 +108,16 @@ public class OfferCalculator
 
         // 2. Calculate money totals.
         var subtotal = MoneyMath.Round2(result.Lines.Sum(l => l.Amount));
-        var orderDiscount = Math.Max(0m, MoneyMath.Round2(draft.OrderDiscount));
+        var requestedDiscountPercent = Math.Max(0m, draft.OrderDiscountPercent);
+        var orderDiscount = requestedDiscountPercent > 0m
+            ? MoneyMath.Round2(subtotal * (requestedDiscountPercent / 100m))
+            : Math.Max(0m, MoneyMath.Round2(draft.OrderDiscount));
+        var effectiveDiscountPercent = requestedDiscountPercent > 0m
+            ? requestedDiscountPercent
+            : subtotal > 0m
+                ? MoneyMath.Round2(orderDiscount / subtotal * 100m)
+                : 0m;
+
         var netAfterDiscount = Math.Max(0m, MoneyMath.Round2(subtotal - orderDiscount));
         var taxPercent = Math.Max(0m, draft.TaxPercent);
         var taxAmount = taxPercent > 0m
@@ -124,10 +134,11 @@ public class OfferCalculator
 
         var total = MoneyMath.Round2(netAfterDiscount + taxAmount - otherTaxAmount);
 
-        result.Totals = new OfferCalculationTotalsDto
+        result.Totals = new CalculatedTotalsDto
         {
             Subtotal = subtotal,
             OrderDiscount = orderDiscount,
+            OrderDiscountPercent = effectiveDiscountPercent,
             NetAfterDiscount = netAfterDiscount,
             TaxPercent = taxPercent,
             TaxAmount = taxAmount,
@@ -144,6 +155,7 @@ public class OfferCalculator
 
         draft.DueDate = dueDate;
         draft.OrderDiscount = orderDiscount;
+        draft.OrderDiscountPercent = effectiveDiscountPercent;
         draft.TaxPercent = taxPercent;
         draft.OtherTaxPercent = otherTaxPercent;
         draft.OtherTaxName = otherTaxName;
@@ -155,7 +167,7 @@ public class OfferCalculator
             .ToDictionary(x => x.Packaging.Id, x => x);
 
         var caps = result.Lines
-            .SelectMany(line => line.Packaging.Select(packaging => new DeliveryPackagingCapDto
+            .SelectMany(line => line.Packaging.Select(packaging => new DeliveryCapDto
             {
                 OfferLineId = line.Id,
                 OfferLinePackagingId = packaging.Id,
@@ -165,6 +177,7 @@ public class OfferCalculator
                 PackageTypeId = packaging.PackageTypeId,
                 PackageTypeName = packaging.PackageTypeName,
                 PackageTypeNameAr = packaging.PackageTypeNameAr,
+                WeightPerPackageKg = packaging.WeightPerPackageKg,
                 OrderedPackages = packaging.Packages,
                 ScheduledPackages = 0,
                 RemainingPackages = packaging.Packages
@@ -193,7 +206,7 @@ public class OfferCalculator
                 }
 
                 CalculatedOfferLineDto? line = null;
-                CalculatedPackagingDto? packaging = null;
+                CalculatedLinePackagingDto? packaging = null;
 
                 if (allocation.OfferLinePackagingId != Guid.Empty &&
                     packagingLookup.TryGetValue(allocation.OfferLinePackagingId, out var packagingMatch))
@@ -269,6 +282,7 @@ public class OfferCalculator
                     MaterialId = line.MaterialId,
                     MaterialCode = line.MaterialCode,
                     MaterialName = line.MaterialName,
+                    Category = line.Category,
                     PackageTypeId = packaging.PackageTypeId,
                     PackageTypeName = packaging.PackageTypeName,
                     PackageTypeNameAr = packaging.PackageTypeNameAr,
@@ -280,7 +294,7 @@ public class OfferCalculator
 
             calculatedBatch.PackagingSummary = calculatedBatch.Allocations
                 .GroupBy(a => new { a.PackageTypeId, a.PackageTypeName, a.PackageTypeNameAr })
-                .Select(group => new CalculatedPackagingSummaryDto
+                .Select(group => new DeliveryPackagingSummaryDto
                 {
                     PackageTypeId = group.Key.PackageTypeId,
                     PackageTypeName = group.Key.PackageTypeName,
@@ -317,6 +331,16 @@ public class OfferCalculator
             .OrderBy(cap => cap.MaterialName)
             .ThenBy(cap => cap.PackageTypeName)
             .ToList();
+
+        if (draft.DeliveryBatches.Count > 0)
+        {
+            foreach (var cap in result.DeliveryCaps.Where(cap => cap.RemainingPackages > 0))
+            {
+                var weight = cap.WeightPerPackageKg.ToString("0.###", CultureInfo.InvariantCulture);
+                result.ValidationWarnings.Add(
+                    $"{cap.MaterialName} ({cap.PackageTypeName} {weight} kg): {cap.RemainingPackages} of {cap.OrderedPackages} packages are not scheduled yet.");
+            }
+        }
 
         result.Document = _documentBuilder.Build(draft, catalog, result);
         return result;
@@ -370,7 +394,7 @@ public class OfferCalculator
         }
     }
 
-    private static string BuildPackagingText(IReadOnlyList<CalculatedPackagingDto> rows, bool arabic)
+    private static string BuildPackagingText(IReadOnlyList<CalculatedLinePackagingDto> rows, bool arabic)
     {
         var parts = rows
             .Where(row => row.Packages > 0)

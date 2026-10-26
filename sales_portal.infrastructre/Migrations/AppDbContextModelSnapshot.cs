@@ -366,6 +366,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("order_discount");
 
+                    b.Property<decimal>("OrderDiscountPercent")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("order_discount_percent");
+
                     b.Property<decimal>("OtherTaxAmount")
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("other_tax_amount");

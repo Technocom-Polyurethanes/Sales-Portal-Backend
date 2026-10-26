@@ -4,8 +4,11 @@ using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using sales_portal.api.Services;
+using sales_portal.api.Middleware;
+using sales_portal.core.IService;
 using sales_portal.core.Services;
+using sales_portal.domain.Interfaces;
+using sales_portal.infrastructure;
 using sales_portal.infrastructure.Contexts;
 
 Env.TraversePath().Load();
@@ -18,11 +21,18 @@ builder.Services
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
     });
 
-builder.Services.AddScoped<OfferDocumentBuilder>();
-builder.Services.AddScoped<OfferCalculator>();
-builder.Services.AddScoped<OfferCatalogProvider>();
+builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ICatalogService, CatalogService>();
+builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<IMaterialService, MaterialService>();
+builder.Services.AddScoped<IOfferCalculator, OfferCalculator>();
+builder.Services.AddScoped<IOfferDocumentBuilder, OfferDocumentBuilder>();
+builder.Services.AddScoped<IOfferService, OfferService>();
 
 var corsOrigins = (Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS")
         ?? "http://localhost:3000,http://localhost:5173,http://localhost:4200")
@@ -83,6 +93,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure the HTTP request pipeline.
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
 app.UseHttpsRedirection();
 
 app.UseCors();

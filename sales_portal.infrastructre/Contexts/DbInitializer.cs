@@ -18,15 +18,15 @@ public static class DbInitializer
             context.PaymentTerms.AddRange(
                 new PaymentTerm { Code = "transfer-order", Label = "Bank Transfer with Order", LabelAr = "تحويل بنكي مع امر التوريد", Days = 0 },
                 new PaymentTerm { Code = "cash-delivery", Label = "Cash on Delivery", LabelAr = "نقدي عند الاستلام", Days = 0 },
-                new PaymentTerm { Code = "cheque-30", Label = "Cheque Due 30 Days", LabelAr = "إصدار شيك - يستحق بعد 30 يوم", Days = 30 },
-                new PaymentTerm { Code = "cheque-60", Label = "Cheque Due 60 Days", LabelAr = "إصدار شيك - يستحق بعد 60 يوم", Days = 60 }
+                new PaymentTerm { Code = "cheque-30", Label = "Cheque Due 30 Days", LabelAr = "إصدار شيك يستحق بعد 30 يوم", Days = 30 },
+                new PaymentTerm { Code = "cheque-60", Label = "Cheque Due 60 Days", LabelAr = "إصدار شيك يستحق بعد 60 يوم", Days = 60 }
             );
             await context.SaveChangesAsync();
         }
 
         var defaultTerm = await context.PaymentTerms.FirstAsync(pt => pt.Code == "transfer-order");
 
-        // 2. Seed Admin User (Yahia Lotfy)
+        // 2. Seed Admin User
         if (!await context.Users.AnyAsync())
         {
             context.Users.Add(new User
@@ -35,8 +35,8 @@ public static class DbInitializer
                 FullName = "Amgad Anwar",
                 Initials = "AA",
                 Email = "logistics@technocom.org",
-                RoleTitle = "Chairman",
-                RoleTitleAr = "رئيس مجلس الإدارة",
+                RoleTitle = "Sales",
+                RoleTitleAr = "مبيعات",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("Technocom2026!"),
                 Role = UserRole.Admin,
                 IsActive = true
@@ -48,7 +48,8 @@ public static class DbInitializer
         var packageTypeSeeds = new[]
         {
             new PackageType { Name = "Drum", NameAr = "برميل", IsActive = true },
-            new PackageType { Name = "Pail", NameAr = "جركن", IsActive = true },
+            new PackageType { Name = "Jerrycan", NameAr = "جركن", IsActive = true },
+            new PackageType { Name = "Pail", NameAr = "بستله", IsActive = true },
             new PackageType { Name = "IBC Tank", NameAr = "تانك IBC", IsActive = true }
         };
 
