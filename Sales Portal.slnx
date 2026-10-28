@@ -2,5 +2,5 @@
   <Project Path="sales_portal.api/sales_portal.api.csproj" />
   <Project Path="sales_portal.core/sales_portal.core.csproj" />
   <Project Path="sales_portal.domain/sales_portal.domain.csproj" />
-  <Project Path="sales_portal.infrastructre/sales_portal.infrastructure.csproj" />
+  <Project Path="sales_portal.infrastructure/sales_portal.infrastructure.csproj" />
 </Solution>

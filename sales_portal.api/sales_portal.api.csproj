@@ -17,7 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\sales_portal.core\sales_portal.core.csproj" />
     <ProjectReference Include="..\sales_portal.domain\sales_portal.domain.csproj" />
-    <ProjectReference Include="..\sales_portal.infrastructre\sales_portal.infrastructure.csproj" />
+    <ProjectReference Include="..\sales_portal.infrastructure\sales_portal.infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
