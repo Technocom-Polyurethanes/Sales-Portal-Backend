@@ -88,6 +88,50 @@ public class CustomerService : ICustomerService
         };
     }
 
+    public async Task<PaginatedResultDto<OfferListItemDto>> GetOffersAsync(Guid id, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var safePage = Math.Max(1, page);
+        var safePageSize = Math.Clamp(pageSize, 1, 200);
+
+        var offersQuery = _customers.GetAll()
+            .Where(c => c.Id == id)
+            .SelectMany(c => c.Offers)
+            .AsNoTracking();
+
+        var totalCount = await offersQuery.CountAsync(cancellationToken);
+        var items = await offersQuery
+            .OrderByDescending(o => o.CreatedAt)
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
+            .Select(o => new OfferListItemDto
+            {
+                Id = o.Id,
+                Reference = o.Reference,
+                SerialNumber = o.SerialNumber,
+                Version = o.Version,
+                CustomerId = o.CustomerId,
+                CustomerName = o.Customer.Name,
+                CustomerNameAr = o.Customer.NameAr,
+                IssueDate = o.IssueDate,
+                DueDate = o.DueDate,
+                Currency = o.Currency,
+                Status = o.Status,
+                Total = o.Total,
+                CreatedByName = o.CreatedBy.FullName,
+                CreatedAt = o.CreatedAt,
+                UpdatedAt = o.UpdatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return new PaginatedResultDto<OfferListItemDto>
+        {
+            Items = items,
+            Page = safePage,
+            PageSize = safePageSize,
+            TotalCount = totalCount
+        };
+    }
+
     public async Task<CustomerDetailDto?> GetByIdWithHistoryAsync(
         Guid id,
         CancellationToken cancellationToken)

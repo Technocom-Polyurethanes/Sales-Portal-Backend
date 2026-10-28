@@ -32,6 +32,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IMaterialService, MaterialService>();
+builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IOfferCalculator, OfferCalculator>();
 builder.Services.AddScoped<IOfferDocumentBuilder, OfferDocumentBuilder>();
 builder.Services.AddScoped<IOfferService, OfferService>();

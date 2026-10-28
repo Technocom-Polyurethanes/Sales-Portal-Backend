@@ -128,6 +128,107 @@ public class OfferService : IOfferService
         return ParseDocument(snapshotJson);
     }
 
+    public async Task<List<OfferListItemDto>> GetVersionsAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var reference = await _offers.GetAll()
+            .AsNoTracking()
+            .Where(o => o.Id == id)
+            .Select(o => o.Reference)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            throw new NotFoundException("Offer was not found.");
+        }
+
+        return await _offers.GetAll()
+            .AsNoTracking()
+            .Where(o => o.Reference == reference)
+            .OrderByDescending(o => o.Version)
+            .ThenByDescending(o => o.CreatedAt)
+            .Select(o => new OfferListItemDto
+            {
+                Id = o.Id,
+                Reference = o.Reference,
+                SerialNumber = o.SerialNumber,
+                Version = o.Version,
+                CustomerId = o.CustomerId,
+                CustomerName = o.Customer.Name,
+                CustomerNameAr = o.Customer.NameAr,
+                IssueDate = o.IssueDate,
+                DueDate = o.DueDate,
+                Currency = o.Currency,
+                Status = o.Status,
+                Total = o.Total,
+                CreatedByName = o.CreatedBy.FullName,
+                CreatedAt = o.CreatedAt,
+                UpdatedAt = o.UpdatedAt
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<OfferNextSequenceDto> GetNextSequenceAsync(int year, int month, Guid? currentUserId, CancellationToken cancellationToken)
+    {
+        if (year <= 0 || month < 1 || month > 12)
+        {
+            throw new ValidationException("Year and month are required.");
+        }
+
+        var monthAbbrev = MonthAbbreviations[month - 1];
+
+        var maxSeq = await _offers.GetAll()
+            .AsNoTracking()
+            .Where(o => o.IssueDate.Year == year && o.IssueDate.Month == month)
+            .Select(o => o.SerialNumber)
+            .DefaultIfEmpty(0)
+            .MaxAsync(cancellationToken);
+
+        if (maxSeq <= 0)
+        {
+            var refs = await _offers.GetAll()
+                .AsNoTracking()
+                .Where(o => o.IssueDate.Year == year && o.IssueDate.Month == month)
+                .Select(o => o.Reference)
+                .ToListAsync(cancellationToken);
+
+            foreach (var reference in refs)
+            {
+                var firstSegment = reference.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (int.TryParse(firstSegment, out var parsed) && parsed > maxSeq)
+                {
+                    maxSeq = parsed;
+                }
+            }
+        }
+
+        var suggestedSequence = maxSeq + 1;
+
+        var company = await _catalogService.GetOfferCatalogAsync(null, currentUserId, cancellationToken);
+        var prefix = string.IsNullOrWhiteSpace(company.CompanySettings?.ReferencePrefix)
+            ? "YL"
+            : company.CompanySettings.ReferencePrefix.Trim();
+
+        string initials = "AA";
+        var createdByInitials = company.CreatedBy?.Initials;
+        if (!string.IsNullOrWhiteSpace(createdByInitials))
+        {
+            initials = createdByInitials.Trim();
+        }
+
+        var suggestedReference = $"{suggestedSequence}/{monthAbbrev}/{prefix}/{initials}";
+
+        return new OfferNextSequenceDto
+        {
+            SuggestedSequence = suggestedSequence,
+            SuggestedReference = suggestedReference
+        };
+    }
+
+    private static readonly string[] MonthAbbreviations =
+    [
+        "JAN.", "FEB.", "MAR.", "APR.", "MAY", "JUN.", "JUL.", "AUG.", "SEP.", "OCT.", "NOV.", "DEC."
+    ];
+
     public async Task<OfferDetailDto> CreateAsync(
         OfferDraftDto draft,
         Guid currentUserId,

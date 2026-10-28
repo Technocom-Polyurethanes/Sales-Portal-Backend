@@ -35,6 +35,26 @@ public class OffersController : ControllerBase
         return Ok(await _offerService.GetListAsync(query, cancellationToken));
     }
 
+    [HttpGet("next-sequence")]
+    public async Task<ActionResult<OfferNextSequenceDto>> GetNextSequence(
+        [FromQuery] int? year,
+        [FromQuery] int? month,
+        CancellationToken cancellationToken)
+    {
+        var targetYear = year ?? DateTime.UtcNow.Year;
+        var targetMonth = month ?? DateTime.UtcNow.Month;
+        var userId = CurrentUserId();
+        return Ok(await _offerService.GetNextSequenceAsync(targetYear, targetMonth, userId, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/versions")]
+    public async Task<ActionResult<List<OfferListItemDto>>> GetVersions(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await _offerService.GetVersionsAsync(id, cancellationToken));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<OfferDetailDto>> GetOffer(
         Guid id,
