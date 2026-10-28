@@ -145,6 +145,26 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+app.MapGet("/health", async (AppDbContext dbContext, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var databaseUp = await dbContext.Database.CanConnectAsync(cancellationToken);
+
+        return databaseUp
+            ? Results.Ok(new { status = "Healthy", database = "Up" })
+            : Results.Json(
+                new { status = "Unhealthy", database = "Down" },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception)
+    {
+        return Results.Json(
+            new { status = "Unhealthy", database = "Down" },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
+
 app.Run();
 
 static string FirstNonEmpty(string? value, string? fallback) =>
