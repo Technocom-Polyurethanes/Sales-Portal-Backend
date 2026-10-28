@@ -82,9 +82,41 @@ builder.Services
         };
     });
 
+// 1. Register CORS before builder.Build()
+const string CorsPolicyName = "SalesPortalCors";
+
+var configuredOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(CorsPolicyName, policy =>
+    {
+        policy
+            .SetIsOriginAllowed(origin =>
+            {
+                // Allow any localhost / 127.0.0.1 port in development (e.g. 8443, 5173, 3000)
+                if (Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                    (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                     uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+
+                return configuredOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
+            })
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+app.UseCors(CorsPolicyName);
 
 using (var scope = app.Services.CreateScope())
 {
