@@ -7,11 +7,8 @@ namespace sales_portal.infrastructure.Contexts;
 
 public static class DbInitializer
 {
-    public static async Task SeedAsync(AppDbContext context)
+    public static async Task SeedAsync(AppDbContext context, bool seedDemoUser)
     {
-        // Ensure database is created/migrated
-        await context.Database.MigrateAsync();
-
         // 1. Seed Default Payment Terms
         if (!await context.PaymentTerms.AnyAsync())
         {
@@ -26,8 +23,8 @@ public static class DbInitializer
 
         var defaultTerm = await context.PaymentTerms.FirstAsync(pt => pt.Code == "transfer-order");
 
-        // 2. Seed Admin User
-        if (!await context.Users.AnyAsync())
+        // 2. Seed Admin User (development only)
+        if (seedDemoUser && !await context.Users.AnyAsync())
         {
             context.Users.Add(new User
             {

@@ -3,8 +3,10 @@ using System.Text.Json.Serialization;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using sales_portal.api.Middleware;
+using sales_portal.core.Configuration;
 using sales_portal.core.IService;
 using sales_portal.core.Services;
 using sales_portal.domain.Interfaces;
@@ -35,27 +37,48 @@ builder.Services.AddScoped<IOfferDocumentBuilder, OfferDocumentBuilder>();
 builder.Services.AddScoped<IOfferService, OfferService>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(Environment.GetEnvironmentVariable("DB_CONNECTION_STRING"), npgsqlOptions =>
-        npgsqlOptions.MigrationsAssembly("sales_portal.infrastructure"))
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("Default")
+        ?? Environment.GetEnvironmentVariable("DB_CONNECTION_STRING"),
+        npgsqlOptions => npgsqlOptions.MigrationsAssembly("sales_portal.infrastructure"))
     .UseSnakeCaseNamingConvention());
 
-var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET")
-    ?? "SuperSecretTechnocomSalesPortalKey_MustBeAtLeast32BytesLong!";
-var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "SalesPortalAPI";
-var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "SalesPortalClient";
+// JWT settings are bound through the Options pattern. The secret must come from
+// configuration (Jwt:Secret) or the legacy JWT_SECRET environment variable; there is
+// deliberately no fallback value so a missing secret fails startup instead of silently
+// signing tokens with a well-known key.
+builder.Services
+    .AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .PostConfigure(options =>
+    {
+        options.Secret = FirstNonEmpty(Environment.GetEnvironmentVariable("JWT_SECRET"), options.Secret);
+        options.Issuer = FirstNonEmpty(Environment.GetEnvironmentVariable("JWT_ISSUER"), options.Issuer);
+        options.Audience = FirstNonEmpty(Environment.GetEnvironmentVariable("JWT_AUDIENCE"), options.Audience);
+    })
+    .Validate(options => !string.IsNullOrWhiteSpace(options.Secret), "Jwt:Secret (or JWT_SECRET) must be configured.")
+    .Validate(options => options.Secret.Length >= 32, "Jwt:Secret (or JWT_SECRET) must be at least 32 characters long.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.Issuer), "Jwt:Issuer must be configured.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.Audience), "Jwt:Audience must be configured.")
+    .ValidateOnStart();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer();
+
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((options, jwtOptions) =>
     {
+        var jwt = jwtOptions.Value;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = jwtIssuer,
+            ValidIssuer = jwt.Issuer,
             ValidateAudience = true,
-            ValidAudience = jwtAudience,
+            ValidAudience = jwt.Audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Secret)),
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1)
         };
@@ -102,7 +125,14 @@ app.UseCors(CorsPolicyName);
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await DbInitializer.SeedAsync(dbContext);
+
+    if (builder.Configuration.GetValue<bool>("Database:AutoMigrate"))
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+
+    // The demo admin account is a development convenience only.
+    await DbInitializer.SeedAsync(dbContext, seedDemoUser: app.Environment.IsDevelopment());
 }
 
 // Configure the HTTP request pipeline.
@@ -116,3 +146,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static string FirstNonEmpty(string? value, string? fallback) =>
+    string.IsNullOrWhiteSpace(value) ? fallback ?? string.Empty : value;
