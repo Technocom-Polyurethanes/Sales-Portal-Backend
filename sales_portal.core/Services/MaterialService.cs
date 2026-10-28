@@ -246,24 +246,48 @@ public class MaterialService : IMaterialService
 
     private static void Validate(UpsertMaterialDto dto)
     {
+        var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+        void AddError(string field, string message)
+        {
+            if (errors.TryGetValue(field, out var existing))
+            {
+                errors[field] = existing.Append(message).ToArray();
+            }
+            else
+            {
+                errors[field] = [message];
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(dto.ItemCode))
         {
-            throw new ValidationException("Item code is required.");
+            AddError("itemCode", "Item code is required.");
         }
 
         if (string.IsNullOrWhiteSpace(dto.Name))
         {
-            throw new ValidationException("Material name is required.");
+            AddError("name", "Material name is required.");
         }
 
         if (string.IsNullOrWhiteSpace(dto.Category))
         {
-            throw new ValidationException("Material category is required.");
+            AddError("category", "Material category is required.");
         }
 
         if (dto.DefaultWeightKg < 0m)
         {
-            throw new ValidationException("Default weight cannot be negative.");
+            AddError("defaultWeightKg", "Default weight cannot be negative.");
+        }
+
+        if (dto.ReferencePricePerKg.HasValue && dto.ReferencePricePerKg.Value < 0m)
+        {
+            AddError("referencePricePerKg", "Reference price per kg cannot be negative.");
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new ValidationException("One or more validation errors occurred.", errors);
         }
     }
 }
