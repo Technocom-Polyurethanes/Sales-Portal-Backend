@@ -36,7 +36,9 @@ public class CustomerService : ICustomerService
                 Name = c.Name,
                 NameAr = c.NameAr,
                 ContactPerson = c.ContactPerson,
+                ContactPersonAr = c.ContactPersonAr,
                 City = c.City,
+                CityAr = c.CityAr,
                 TaxId = c.TaxId,
                 DefaultCurrency = c.DefaultCurrency,
                 Email = c.Email,
@@ -173,10 +175,13 @@ public class CustomerService : ICustomerService
             NameAr = dto.NameAr,
             TaxId = dto.TaxId,
             ContactPerson = dto.ContactPerson,
+            ContactPersonAr = dto.ContactPersonAr,
             Email = dto.Email,
             Phone = dto.Phone,
             City = dto.City,
+            CityAr = dto.CityAr,
             Address = dto.Address.Trim(),
+            AddressAr = dto.AddressAr,
             DefaultPaymentTermId = dto.DefaultPaymentTermId,
             DefaultCurrency = string.IsNullOrWhiteSpace(dto.DefaultCurrency) ? "EGP" : dto.DefaultCurrency
         };
@@ -219,10 +224,13 @@ public class CustomerService : ICustomerService
         customer.NameAr = dto.NameAr;
         customer.TaxId = dto.TaxId;
         customer.ContactPerson = dto.ContactPerson;
+        customer.ContactPersonAr = dto.ContactPersonAr;
         customer.Email = dto.Email;
         customer.Phone = dto.Phone;
         customer.City = dto.City;
+        customer.CityAr = dto.CityAr;
         customer.Address = dto.Address.Trim();
+        customer.AddressAr = dto.AddressAr;
         customer.DefaultPaymentTermId = dto.DefaultPaymentTermId;
         customer.DefaultCurrency = string.IsNullOrWhiteSpace(dto.DefaultCurrency) ? "EGP" : dto.DefaultCurrency;
 
@@ -258,10 +266,13 @@ public class CustomerService : ICustomerService
                 NameAr = c.NameAr,
                 TaxId = c.TaxId,
                 ContactPerson = c.ContactPerson,
+                ContactPersonAr = c.ContactPersonAr,
                 Email = c.Email,
                 Phone = c.Phone,
                 City = c.City,
+                CityAr = c.CityAr,
                 Address = c.Address,
+                AddressAr = c.AddressAr,
                 DefaultPaymentTermId = c.DefaultPaymentTermId,
                 DefaultPaymentTermLabel = c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Label : null,
                 DefaultCurrency = c.DefaultCurrency,
@@ -290,10 +301,13 @@ public class CustomerService : ICustomerService
             NameAr = customer.NameAr,
             TaxId = customer.TaxId,
             ContactPerson = customer.ContactPerson,
+            ContactPersonAr = customer.ContactPersonAr,
             Email = customer.Email,
             Phone = customer.Phone,
             City = customer.City,
+            CityAr = customer.CityAr,
             Address = customer.Address,
+            AddressAr = customer.AddressAr,
             DefaultPaymentTermId = customer.DefaultPaymentTermId,
             DefaultPaymentTermLabel = customer.DefaultPaymentTerm?.Label,
             DefaultCurrency = customer.DefaultCurrency,

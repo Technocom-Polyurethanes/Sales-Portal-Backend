@@ -545,6 +545,7 @@ public class OfferService : IOfferService
             UpdatedByUserId = offer.UpdatedByUserId,
             UpdatedByName = offer.UpdatedBy?.FullName,
             Attention = offer.Attention,
+            AttentionAr = offer.AttentionAr,
             TaxId = offer.TaxId,
             IssueDate = offer.IssueDate,
             DueDate = offer.DueDate,
@@ -591,6 +592,7 @@ public class OfferService : IOfferService
             CustomerId = offer.CustomerId,
             CreatedByUserId = offer.CreatedByUserId,
             Attention = offer.Attention,
+            AttentionAr = offer.AttentionAr,
             TaxId = offer.TaxId,
             IssueDate = offer.IssueDate,
             DueDate = offer.DueDate,
@@ -680,6 +682,7 @@ public class OfferService : IOfferService
         offer.CreatedByUserId = createdByUserId;
         offer.UpdatedByUserId = updatedByUserId ?? createdByUserId;
         offer.Attention = draft.Attention;
+        offer.AttentionAr = draft.AttentionAr;
         offer.TaxId = draft.TaxId;
         offer.IssueDate = draft.IssueDate;
         offer.DueDate = calculation.Totals.DueDate;

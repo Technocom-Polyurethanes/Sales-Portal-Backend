@@ -53,6 +53,12 @@ internal static class TestFactory
     public static CustomerService CreateCustomerService(AppDbContext context)
         => new(new Repository<Customer>(context));
 
+    public static SettingsService CreateSettingsService(AppDbContext context)
+        => new(
+            new Repository<CompanySettings>(context),
+            new Repository<WorkspaceSettings>(context),
+            new Repository<BankAccount>(context));
+
     public static SeededBasics SeedBasics(AppDbContext context)
     {
         var user = new User

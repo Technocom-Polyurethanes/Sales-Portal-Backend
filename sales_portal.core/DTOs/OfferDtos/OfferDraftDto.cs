@@ -14,6 +14,7 @@ public class OfferDraftDto
     public Guid? CreatedByUserId { get; set; }
 
     public string? Attention { get; set; }
+    public string? AttentionAr { get; set; }
     public string? TaxId { get; set; }
     public DateOnly IssueDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
     public DateOnly? DueDate { get; set; }

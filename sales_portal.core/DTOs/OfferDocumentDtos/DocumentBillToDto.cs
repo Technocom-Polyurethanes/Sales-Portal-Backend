@@ -7,9 +7,13 @@ public class DocumentBillToDto
     public string Name { get; set; } = string.Empty;
     public string? NameAr { get; set; }
     public string Address { get; set; } = string.Empty;
+    public string? AddressAr { get; set; }
     public string? City { get; set; }
+    public string? CityAr { get; set; }
     public string? ContactPerson { get; set; }
+    public string? ContactPersonAr { get; set; }
     public string? Attention { get; set; }
+    public string? AttentionAr { get; set; }
     public string? TaxId { get; set; }
     public string? Email { get; set; }
     public string? Phone { get; set; }

@@ -9,8 +9,11 @@ namespace sales_portal.domain.Models
     public class BankAccount : BaseEntity
     {
         public string Bank { get; set; } = default!;
+        public string? BankAr { get; set; }
         public string Branch { get; set; } = default!;
+        public string? BranchAr { get; set; }
         public string AccountHolderName { get; set; } = default!;
+        public string? AccountHolderNameAr { get; set; }
         public string AccountNumber { get; set; } = default!;
         public string Swift { get; set; } = default!;
         public string Iban { get; set; } = default!;
