@@ -124,7 +124,13 @@ public class OffersController : ControllerBase
         [FromBody] UpdateOfferStatusDto request,
         CancellationToken cancellationToken)
     {
-        return Ok(await _offerService.UpdateStatusAsync(id, request, cancellationToken));
+        var userId = CurrentUserId();
+        if (userId == null)
+        {
+            return Unauthorized();
+        }
+
+        return Ok(await _offerService.UpdateStatusAsync(id, request, userId.Value, cancellationToken));
     }
 
     private Guid? CurrentUserId()

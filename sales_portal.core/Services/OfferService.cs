@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -60,6 +61,15 @@ public class OfferService : IOfferService
 
         var offers = _offers.GetAll().AsNoTracking().AsQueryable();
 
+        // LatestOnly is evaluated before search/status so the filters apply to the
+        // highest-version row of each reference rather than to historical versions.
+        if (query.LatestOnly)
+        {
+            offers = offers.Where(o =>
+                !_offers.GetAll().Any(other =>
+                    other.Reference == o.Reference && other.Version > o.Version));
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim().ToLowerInvariant();
@@ -74,9 +84,26 @@ public class OfferService : IOfferService
             offers = offers.Where(o => o.Status == query.Status.Value);
         }
 
+        var sortBy = (query.SortBy ?? string.Empty).Trim().ToLowerInvariant();
+        var ascending = string.Equals(query.SortDir, "asc", StringComparison.OrdinalIgnoreCase);
+
+        IOrderedQueryable<Offer> ordered = (sortBy, ascending) switch
+        {
+            ("createdat", true) => offers.OrderBy(o => o.CreatedAt),
+            ("createdat", false) => offers.OrderByDescending(o => o.CreatedAt),
+            ("reference", true) => offers.OrderBy(o => o.Reference),
+            ("reference", false) => offers.OrderByDescending(o => o.Reference),
+            ("total", true) => offers.OrderBy(o => o.Total),
+            ("total", false) => offers.OrderByDescending(o => o.Total),
+            ("issuedate", true) => offers.OrderBy(o => o.IssueDate),
+            ("issuedate", false) => offers.OrderByDescending(o => o.IssueDate),
+            (_, true) => offers.OrderBy(o => o.UpdatedAt),
+            _ => offers.OrderByDescending(o => o.UpdatedAt)
+        };
+
         var totalCount = await offers.CountAsync(cancellationToken);
-        var items = await offers
-            .OrderByDescending(o => o.CreatedAt)
+        var items = await ordered
+            .ThenBy(o => o.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(o => new OfferListItemDto
@@ -95,7 +122,13 @@ public class OfferService : IOfferService
                 Total = o.Total,
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
-                UpdatedAt = o.UpdatedAt
+                UpdatedAt = o.UpdatedAt,
+                VersionsCount = _offers.GetAll().Count(version => version.Reference == o.Reference),
+                LastModifiedByName = o.UpdatedBy != null
+                    ? o.UpdatedBy.FullName
+                    : o.CreatedBy.FullName,
+                LastModifiedAt = o.UpdatedAt,
+                ParentOfferId = o.ParentOfferId
             })
             .ToListAsync(cancellationToken);
 
@@ -114,7 +147,15 @@ public class OfferService : IOfferService
             .AsNoTracking()
             .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
-        return offer == null ? null : MapOfferDetails(offer);
+        if (offer == null)
+        {
+            return null;
+        }
+
+        var detail = MapOfferDetails(offer);
+        detail.VersionsCount = await _offers.GetAll()
+            .CountAsync(o => o.Reference == offer.Reference, cancellationToken);
+        return detail;
     }
 
     public async Task<OfferDocumentDto?> GetDocumentAsync(Guid id, CancellationToken cancellationToken)
@@ -162,7 +203,13 @@ public class OfferService : IOfferService
                 Total = o.Total,
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
-                UpdatedAt = o.UpdatedAt
+                UpdatedAt = o.UpdatedAt,
+                VersionsCount = _offers.GetAll().Count(version => version.Reference == o.Reference),
+                LastModifiedByName = o.UpdatedBy != null
+                    ? o.UpdatedBy.FullName
+                    : o.CreatedBy.FullName,
+                LastModifiedAt = o.UpdatedAt,
+                ParentOfferId = o.ParentOfferId
             })
             .ToListAsync(cancellationToken);
     }
@@ -174,20 +221,22 @@ public class OfferService : IOfferService
             throw new ValidationException("Year and month are required.");
         }
 
-        var monthAbbrev = MonthAbbreviations[month - 1];
+        var monthStart = new DateOnly(year, month, 1);
+        var nextMonthStart = monthStart.AddMonths(1);
 
-        var maxSeq = await _offers.GetAll()
+        var sequences = await _offers.GetAll()
             .AsNoTracking()
-            .Where(o => o.IssueDate.Year == year && o.IssueDate.Month == month)
+            .Where(o => o.IssueDate >= monthStart && o.IssueDate < nextMonthStart)
             .Select(o => o.SerialNumber)
-            .DefaultIfEmpty(0)
-            .MaxAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+
+        var maxSeq = sequences.Count == 0 ? 0 : sequences.Max();
 
         if (maxSeq <= 0)
         {
             var refs = await _offers.GetAll()
                 .AsNoTracking()
-                .Where(o => o.IssueDate.Year == year && o.IssueDate.Month == month)
+                .Where(o => o.IssueDate >= monthStart && o.IssueDate < nextMonthStart)
                 .Select(o => o.Reference)
                 .ToListAsync(cancellationToken);
 
@@ -215,7 +264,11 @@ public class OfferService : IOfferService
             initials = createdByInitials.Trim();
         }
 
-        var suggestedReference = $"{suggestedSequence}/{monthAbbrev}/{prefix}/{initials}";
+        var suggestedReference = ReferenceRules.Build(
+            suggestedSequence,
+            new DateOnly(year, month, 1),
+            prefix,
+            initials);
 
         return new OfferNextSequenceDto
         {
@@ -223,11 +276,6 @@ public class OfferService : IOfferService
             SuggestedReference = suggestedReference
         };
     }
-
-    private static readonly string[] MonthAbbreviations =
-    [
-        "JAN.", "FEB.", "MAR.", "APR.", "MAY", "JUN.", "JUL.", "AUG.", "SEP.", "OCT.", "NOV.", "DEC."
-    ];
 
     public async Task<OfferDetailDto> CreateAsync(
         OfferDraftDto draft,
@@ -330,7 +378,7 @@ public class OfferService : IOfferService
             _offers.ClearTracking();
 
             var trackedOffer = await _offers.GetAll().FirstAsync(o => o.Id == id, cancellationToken);
-            ApplyCalculatedOffer(trackedOffer, calculation, trackedOffer.CreatedByUserId);
+            ApplyCalculatedOffer(trackedOffer, calculation, trackedOffer.CreatedByUserId, currentUserId);
             await MarkNewChildrenAsAddedAsync(trackedOffer);
 
             await _offers.SaveChangesAsync(cancellationToken);
@@ -401,6 +449,7 @@ public class OfferService : IOfferService
     public async Task<OfferDetailDto> UpdateStatusAsync(
         Guid id,
         UpdateOfferStatusDto dto,
+        Guid currentUserId,
         CancellationToken cancellationToken)
     {
         var offer = await _offers.GetByIdAsync(id);
@@ -416,6 +465,7 @@ public class OfferService : IOfferService
         }
 
         offer.Status = dto.Status;
+        offer.UpdatedByUserId = currentUserId;
 
         var document = ParseDocument(offer.SnapshotJson);
         if (document != null)
@@ -458,6 +508,7 @@ public class OfferService : IOfferService
         return _offers.GetAll()
             .Include(o => o.Customer)
             .Include(o => o.CreatedBy)
+            .Include(o => o.UpdatedBy)
             .Include(o => o.PaymentTerm)
             .Include(o => o.Lines)
             .ThenInclude(l => l.Packaging)
@@ -493,7 +544,10 @@ public class OfferService : IOfferService
                 },
             CreatedByUserId = offer.CreatedByUserId,
             CreatedByName = offer.CreatedBy?.FullName,
+            UpdatedByUserId = offer.UpdatedByUserId,
+            UpdatedByName = offer.UpdatedBy?.FullName,
             Attention = offer.Attention,
+            AttentionAr = offer.AttentionAr,
             TaxId = offer.TaxId,
             IssueDate = offer.IssueDate,
             DueDate = offer.DueDate,
@@ -540,6 +594,7 @@ public class OfferService : IOfferService
             CustomerId = offer.CustomerId,
             CreatedByUserId = offer.CreatedByUserId,
             Attention = offer.Attention,
+            AttentionAr = offer.AttentionAr,
             TaxId = offer.TaxId,
             IssueDate = offer.IssueDate,
             DueDate = offer.DueDate,
@@ -616,7 +671,8 @@ public class OfferService : IOfferService
     private static void ApplyCalculatedOffer(
         Offer offer,
         OfferCalculateResponseDto calculation,
-        Guid createdByUserId)
+        Guid createdByUserId,
+        Guid? updatedByUserId = null)
     {
         var draft = calculation.Draft;
 
@@ -626,7 +682,9 @@ public class OfferService : IOfferService
         offer.ParentOfferId = draft.ParentOfferId;
         offer.CustomerId = draft.CustomerId;
         offer.CreatedByUserId = createdByUserId;
+        offer.UpdatedByUserId = updatedByUserId ?? createdByUserId;
         offer.Attention = draft.Attention;
+        offer.AttentionAr = draft.AttentionAr;
         offer.TaxId = draft.TaxId;
         offer.IssueDate = draft.IssueDate;
         offer.DueDate = calculation.Totals.DueDate;

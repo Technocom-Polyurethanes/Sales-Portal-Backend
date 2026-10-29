@@ -34,6 +34,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("account_holder_name");
 
+                    b.Property<string>("AccountHolderNameAr")
+                        .HasColumnType("text")
+                        .HasColumnName("account_holder_name_ar");
+
                     b.Property<string>("AccountNumber")
                         .IsRequired()
                         .HasColumnType("text")
@@ -44,10 +48,18 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("bank");
 
+                    b.Property<string>("BankAr")
+                        .HasColumnType("text")
+                        .HasColumnName("bank_ar");
+
                     b.Property<string>("Branch")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("branch");
+
+                    b.Property<string>("BranchAr")
+                        .HasColumnType("text")
+                        .HasColumnName("branch_ar");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -173,13 +185,25 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("address");
 
+                    b.Property<string>("AddressAr")
+                        .HasColumnType("text")
+                        .HasColumnName("address_ar");
+
                     b.Property<string>("City")
                         .HasColumnType("text")
                         .HasColumnName("city");
 
+                    b.Property<string>("CityAr")
+                        .HasColumnType("text")
+                        .HasColumnName("city_ar");
+
                     b.Property<string>("ContactPerson")
                         .HasColumnType("text")
                         .HasColumnName("contact_person");
+
+                    b.Property<string>("ContactPersonAr")
+                        .HasColumnType("text")
+                        .HasColumnName("contact_person_ar");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -324,6 +348,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("attention");
 
+                    b.Property<string>("AttentionAr")
+                        .HasColumnType("text")
+                        .HasColumnName("attention_ar");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -438,6 +466,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
                     b.Property<int>("Version")
                         .HasColumnType("integer")
                         .HasColumnName("version");
@@ -462,6 +494,9 @@ namespace sales_portal.infrastructure.Migrations
 
                     b.HasIndex("PaymentTermId")
                         .HasDatabaseName("ix_offers_payment_term_id");
+
+                    b.HasIndex("UpdatedByUserId")
+                        .HasDatabaseName("ix_offers_updated_by_user_id");
 
                     b.HasIndex("Reference", "Version")
                         .IsUnique()
@@ -972,6 +1007,12 @@ namespace sales_portal.infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_offers_payment_terms_payment_term_id");
 
+                    b.HasOne("sales_portal.domain.Models.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_offers_users_updated_by_user_id");
+
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Customer");
@@ -979,6 +1020,8 @@ namespace sales_portal.infrastructure.Migrations
                     b.Navigation("ParentOffer");
 
                     b.Navigation("PaymentTerm");
+
+                    b.Navigation("UpdatedBy");
                 });
 
             modelBuilder.Entity("sales_portal.domain.Models.OfferDeliveryAllocation", b =>

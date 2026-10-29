@@ -76,8 +76,11 @@ public class CatalogService : ICatalogService
             {
                 Id = account.Id,
                 Bank = account.Bank,
+                BankAr = account.BankAr,
                 Branch = account.Branch,
+                BranchAr = account.BranchAr,
                 AccountHolderName = account.AccountHolderName,
+                AccountHolderNameAr = account.AccountHolderNameAr,
                 AccountNumber = account.AccountNumber,
                 Swift = account.Swift,
                 Iban = account.Iban,

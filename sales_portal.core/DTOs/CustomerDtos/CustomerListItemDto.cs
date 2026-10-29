@@ -4,6 +4,7 @@ public class CustomerListItemDto : CustomerLookupItemDto
 {
     public string? ErpNextId { get; set; }
     public string Address { get; set; } = string.Empty;
+    public string? AddressAr { get; set; }
     public Guid? DefaultPaymentTermId { get; set; }
     public string? DefaultPaymentTermLabel { get; set; }
     public int OffersCount { get; set; }
