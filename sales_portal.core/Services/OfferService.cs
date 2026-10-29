@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -220,20 +221,22 @@ public class OfferService : IOfferService
             throw new ValidationException("Year and month are required.");
         }
 
-        var monthAbbrev = MonthAbbreviations[month - 1];
+        var monthStart = new DateOnly(year, month, 1);
+        var nextMonthStart = monthStart.AddMonths(1);
 
-        var maxSeq = await _offers.GetAll()
+        var sequences = await _offers.GetAll()
             .AsNoTracking()
-            .Where(o => o.IssueDate.Year == year && o.IssueDate.Month == month)
+            .Where(o => o.IssueDate >= monthStart && o.IssueDate < nextMonthStart)
             .Select(o => o.SerialNumber)
-            .DefaultIfEmpty(0)
-            .MaxAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+
+        var maxSeq = sequences.Count == 0 ? 0 : sequences.Max();
 
         if (maxSeq <= 0)
         {
             var refs = await _offers.GetAll()
                 .AsNoTracking()
-                .Where(o => o.IssueDate.Year == year && o.IssueDate.Month == month)
+                .Where(o => o.IssueDate >= monthStart && o.IssueDate < nextMonthStart)
                 .Select(o => o.Reference)
                 .ToListAsync(cancellationToken);
 
@@ -261,7 +264,11 @@ public class OfferService : IOfferService
             initials = createdByInitials.Trim();
         }
 
-        var suggestedReference = $"{suggestedSequence}/{monthAbbrev}/{prefix}/{initials}";
+        var suggestedReference = ReferenceRules.Build(
+            suggestedSequence,
+            new DateOnly(year, month, 1),
+            prefix,
+            initials);
 
         return new OfferNextSequenceDto
         {
@@ -269,11 +276,6 @@ public class OfferService : IOfferService
             SuggestedReference = suggestedReference
         };
     }
-
-    private static readonly string[] MonthAbbreviations =
-    [
-        "JAN.", "FEB.", "MAR.", "APR.", "MAY", "JUN.", "JUL.", "AUG.", "SEP.", "OCT.", "NOV.", "DEC."
-    ];
 
     public async Task<OfferDetailDto> CreateAsync(
         OfferDraftDto draft,
