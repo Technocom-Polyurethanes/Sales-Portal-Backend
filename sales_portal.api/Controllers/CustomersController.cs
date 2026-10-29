@@ -36,6 +36,16 @@ public class CustomersController : ControllerBase
         return Ok(await _customerService.GetAllAsync(search, cancellationToken));
     }
 
+    [HttpGet("{id:guid}/offers")]
+    public async Task<ActionResult<PaginatedResultDto<OfferListItemDto>>> GetCustomerOffers(
+        Guid id,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        return Ok(await _customerService.GetOffersAsync(id, page, pageSize, cancellationToken));
+    }
+
     [HttpGet("lookup")]
     public async Task<ActionResult<PaginatedResultDto<CustomerLookupItemDto>>> Lookup(
         [FromQuery] LookupQueryDto query,

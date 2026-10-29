@@ -13,7 +13,11 @@ public class OfferDetailDto
     public CustomerLookupItemDto? Customer { get; set; }
     public Guid CreatedByUserId { get; set; }
     public string? CreatedByName { get; set; }
+    public Guid? UpdatedByUserId { get; set; }
+    public string? UpdatedByName { get; set; }
+    public int VersionsCount { get; set; }
     public string? Attention { get; set; }
+    public string? AttentionAr { get; set; }
     public string? TaxId { get; set; }
     public DateOnly IssueDate { get; set; }
     public DateOnly DueDate { get; set; }

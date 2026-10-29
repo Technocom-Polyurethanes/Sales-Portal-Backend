@@ -19,8 +19,11 @@ namespace sales_portal.domain.Models
         public Customer Customer { get; set; } = default!;
         public Guid CreatedByUserId { get; set; }
         public User CreatedBy { get; set; } = default!;
+        public Guid? UpdatedByUserId { get; set; }
+        public User? UpdatedBy { get; set; }
 
         public string? Attention { get; set; }                     // editable contact person printed on the PDF
+        public string? AttentionAr { get; set; }
         public string? TaxId { get; set; }                         // printed in the PDF Bill-To block
         public DateOnly IssueDate { get; set; }
         public DateOnly DueDate { get; set; }
