@@ -184,15 +184,48 @@ public class ArabicFieldsTests
             },
             CancellationToken.None);
 
-        var bank = Assert.Single(updated.Workspace.BankAccounts);
+        var bank = Assert.Single(updated.Workspace.BankAccounts!);
         Assert.Equal(id, bank.Id);
         Assert.Equal("بنك قطر الوطني", bank.BankAr);
         Assert.Equal("مدينة بدر", bank.BranchAr);
         Assert.Equal("شركة تكنوكوم للتوكيلات التجارية", bank.AccountHolderNameAr);
 
         var reloaded = await service.GetAsync(CancellationToken.None);
-        var reloadedBank = Assert.Single(reloaded.Workspace.BankAccounts);
+        var reloadedBank = Assert.Single(reloaded.Workspace.BankAccounts!);
         Assert.Equal("بنك قطر الوطني", reloadedBank.BankAr);
+    }
+
+    [Fact]
+    public async Task Settings_update_without_bank_accounts_keeps_the_existing_list()
+    {
+        using var db = new TestDatabase();
+        var service = TestFactory.CreateSettingsService(db.Context);
+        db.Context.BankAccounts.Add(new BankAccount
+        {
+            Bank = "QNB",
+            Branch = "Badr City",
+            AccountHolderName = "Technocom for Commercial Agencies",
+            AccountNumber = "123",
+            Swift = "SWIFT",
+            Iban = "EG",
+            Currency = "EGP",
+            SortOrder = 1,
+            IsActive = true
+        });
+        await db.Context.SaveChangesAsync();
+
+        var updated = await service.UpdateAsync(
+            new UpdateSettingsDto
+            {
+                Workspace = new WorkspaceSettingsDto
+                {
+                    DefaultCurrency = "EGP"
+                }
+            },
+            CancellationToken.None);
+
+        var bank = Assert.Single(updated.Workspace.BankAccounts!);
+        Assert.Equal("QNB", bank.Bank);
     }
 
     [Fact]

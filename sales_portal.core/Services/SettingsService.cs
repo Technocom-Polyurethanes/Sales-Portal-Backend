@@ -77,9 +77,9 @@ public class SettingsService : ISettingsService
                 _workspaceSettings.Update(workspace);
             }
 
-            if (dto.Workspace.BankAccounts != null)
+            if (dto.Workspace.BankAccounts is { } bankAccounts)
             {
-                await ApplyBankAccountsAsync(dto.Workspace.BankAccounts, cancellationToken);
+                await ApplyBankAccountsAsync(bankAccounts, cancellationToken);
             }
         }
 

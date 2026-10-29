@@ -14,8 +14,9 @@ public class WorkspaceSettingsDto
     public string? ErpNextUrl { get; set; }
 
     /// <summary>
-    /// Bank accounts managed from settings. The list is returned on GET and replaced
-    /// (upsert by id) on PUT when supplied.
+    /// Bank accounts managed from settings. The list is returned on GET and reconciled
+    /// (upsert by id) on PUT when supplied. A null value means the request did not
+    /// include bank accounts, so the existing list is left untouched.
     /// </summary>
-    public List<BankAccountDto> BankAccounts { get; set; } = new();
+    public List<BankAccountDto>? BankAccounts { get; set; }
 }
