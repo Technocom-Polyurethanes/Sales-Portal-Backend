@@ -119,7 +119,15 @@ public class CustomerService : ICustomerService
                 Total = o.Total,
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
-                UpdatedAt = o.UpdatedAt
+                UpdatedAt = o.UpdatedAt,
+                VersionsCount = _customers.GetAll()
+                    .SelectMany(customer => customer.Offers)
+                    .Count(version => version.Reference == o.Reference),
+                LastModifiedByName = o.UpdatedBy != null
+                    ? o.UpdatedBy.FullName
+                    : o.CreatedBy.FullName,
+                LastModifiedAt = o.UpdatedAt,
+                ParentOfferId = o.ParentOfferId
             })
             .ToListAsync(cancellationToken);
 

@@ -3,4 +3,5 @@
   <Project Path="sales_portal.core/sales_portal.core.csproj" />
   <Project Path="sales_portal.domain/sales_portal.domain.csproj" />
   <Project Path="sales_portal.infrastructure/sales_portal.infrastructure.csproj" />
+  <Project Path="sales_portal.tests/sales_portal.tests.csproj" />
 </Solution>

@@ -170,3 +170,5 @@ app.Run();
 
 static string FirstNonEmpty(string? value, string? fallback) =>
     string.IsNullOrWhiteSpace(value) ? fallback ?? string.Empty : value;
+
+public partial class Program;

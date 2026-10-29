@@ -47,6 +47,11 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
             .HasForeignKey(o => o.CreatedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(o => o.UpdatedBy)
+            .WithMany()
+            .HasForeignKey(o => o.UpdatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasMany(o => o.Lines)
             .WithOne(l => l.Offer)
             .HasForeignKey(l => l.OfferId)
@@ -60,5 +65,6 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
         // Add these lines inside Configure(EntityTypeBuilder<Offer> builder):
         builder.HasIndex(o => o.CustomerId);
         builder.HasIndex(o => o.CreatedByUserId);
+        builder.HasIndex(o => o.UpdatedByUserId);
     }
 }

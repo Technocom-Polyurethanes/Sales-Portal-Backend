@@ -60,6 +60,15 @@ public class OfferService : IOfferService
 
         var offers = _offers.GetAll().AsNoTracking().AsQueryable();
 
+        // LatestOnly is evaluated before search/status so the filters apply to the
+        // highest-version row of each reference rather than to historical versions.
+        if (query.LatestOnly)
+        {
+            offers = offers.Where(o =>
+                !_offers.GetAll().Any(other =>
+                    other.Reference == o.Reference && other.Version > o.Version));
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim().ToLowerInvariant();
@@ -74,9 +83,26 @@ public class OfferService : IOfferService
             offers = offers.Where(o => o.Status == query.Status.Value);
         }
 
+        var sortBy = (query.SortBy ?? string.Empty).Trim().ToLowerInvariant();
+        var ascending = string.Equals(query.SortDir, "asc", StringComparison.OrdinalIgnoreCase);
+
+        IOrderedQueryable<Offer> ordered = (sortBy, ascending) switch
+        {
+            ("createdat", true) => offers.OrderBy(o => o.CreatedAt),
+            ("createdat", false) => offers.OrderByDescending(o => o.CreatedAt),
+            ("reference", true) => offers.OrderBy(o => o.Reference),
+            ("reference", false) => offers.OrderByDescending(o => o.Reference),
+            ("total", true) => offers.OrderBy(o => o.Total),
+            ("total", false) => offers.OrderByDescending(o => o.Total),
+            ("issuedate", true) => offers.OrderBy(o => o.IssueDate),
+            ("issuedate", false) => offers.OrderByDescending(o => o.IssueDate),
+            (_, true) => offers.OrderBy(o => o.UpdatedAt),
+            _ => offers.OrderByDescending(o => o.UpdatedAt)
+        };
+
         var totalCount = await offers.CountAsync(cancellationToken);
-        var items = await offers
-            .OrderByDescending(o => o.CreatedAt)
+        var items = await ordered
+            .ThenBy(o => o.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(o => new OfferListItemDto
@@ -95,7 +121,13 @@ public class OfferService : IOfferService
                 Total = o.Total,
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
-                UpdatedAt = o.UpdatedAt
+                UpdatedAt = o.UpdatedAt,
+                VersionsCount = _offers.GetAll().Count(version => version.Reference == o.Reference),
+                LastModifiedByName = o.UpdatedBy != null
+                    ? o.UpdatedBy.FullName
+                    : o.CreatedBy.FullName,
+                LastModifiedAt = o.UpdatedAt,
+                ParentOfferId = o.ParentOfferId
             })
             .ToListAsync(cancellationToken);
 
@@ -114,7 +146,15 @@ public class OfferService : IOfferService
             .AsNoTracking()
             .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
-        return offer == null ? null : MapOfferDetails(offer);
+        if (offer == null)
+        {
+            return null;
+        }
+
+        var detail = MapOfferDetails(offer);
+        detail.VersionsCount = await _offers.GetAll()
+            .CountAsync(o => o.Reference == offer.Reference, cancellationToken);
+        return detail;
     }
 
     public async Task<OfferDocumentDto?> GetDocumentAsync(Guid id, CancellationToken cancellationToken)
@@ -162,7 +202,13 @@ public class OfferService : IOfferService
                 Total = o.Total,
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
-                UpdatedAt = o.UpdatedAt
+                UpdatedAt = o.UpdatedAt,
+                VersionsCount = _offers.GetAll().Count(version => version.Reference == o.Reference),
+                LastModifiedByName = o.UpdatedBy != null
+                    ? o.UpdatedBy.FullName
+                    : o.CreatedBy.FullName,
+                LastModifiedAt = o.UpdatedAt,
+                ParentOfferId = o.ParentOfferId
             })
             .ToListAsync(cancellationToken);
     }
@@ -330,7 +376,7 @@ public class OfferService : IOfferService
             _offers.ClearTracking();
 
             var trackedOffer = await _offers.GetAll().FirstAsync(o => o.Id == id, cancellationToken);
-            ApplyCalculatedOffer(trackedOffer, calculation, trackedOffer.CreatedByUserId);
+            ApplyCalculatedOffer(trackedOffer, calculation, trackedOffer.CreatedByUserId, currentUserId);
             await MarkNewChildrenAsAddedAsync(trackedOffer);
 
             await _offers.SaveChangesAsync(cancellationToken);
@@ -401,6 +447,7 @@ public class OfferService : IOfferService
     public async Task<OfferDetailDto> UpdateStatusAsync(
         Guid id,
         UpdateOfferStatusDto dto,
+        Guid currentUserId,
         CancellationToken cancellationToken)
     {
         var offer = await _offers.GetByIdAsync(id);
@@ -416,6 +463,7 @@ public class OfferService : IOfferService
         }
 
         offer.Status = dto.Status;
+        offer.UpdatedByUserId = currentUserId;
 
         var document = ParseDocument(offer.SnapshotJson);
         if (document != null)
@@ -458,6 +506,7 @@ public class OfferService : IOfferService
         return _offers.GetAll()
             .Include(o => o.Customer)
             .Include(o => o.CreatedBy)
+            .Include(o => o.UpdatedBy)
             .Include(o => o.PaymentTerm)
             .Include(o => o.Lines)
             .ThenInclude(l => l.Packaging)
@@ -493,6 +542,8 @@ public class OfferService : IOfferService
                 },
             CreatedByUserId = offer.CreatedByUserId,
             CreatedByName = offer.CreatedBy?.FullName,
+            UpdatedByUserId = offer.UpdatedByUserId,
+            UpdatedByName = offer.UpdatedBy?.FullName,
             Attention = offer.Attention,
             TaxId = offer.TaxId,
             IssueDate = offer.IssueDate,
@@ -616,7 +667,8 @@ public class OfferService : IOfferService
     private static void ApplyCalculatedOffer(
         Offer offer,
         OfferCalculateResponseDto calculation,
-        Guid createdByUserId)
+        Guid createdByUserId,
+        Guid? updatedByUserId = null)
     {
         var draft = calculation.Draft;
 
@@ -626,6 +678,7 @@ public class OfferService : IOfferService
         offer.ParentOfferId = draft.ParentOfferId;
         offer.CustomerId = draft.CustomerId;
         offer.CreatedByUserId = createdByUserId;
+        offer.UpdatedByUserId = updatedByUserId ?? createdByUserId;
         offer.Attention = draft.Attention;
         offer.TaxId = draft.TaxId;
         offer.IssueDate = draft.IssueDate;
