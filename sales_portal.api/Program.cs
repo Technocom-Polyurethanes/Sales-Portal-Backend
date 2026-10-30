@@ -134,6 +134,9 @@ using (var scope = app.Services.CreateScope())
 
     // The demo admin account is a development convenience only.
     await DbInitializer.SeedAsync(dbContext, seedDemoUser: app.Environment.IsDevelopment());
+    
+    // Production first-login bootstrap (no-op when users exist or variables missing)
+    await DbInitializer.BootstrapAdminAsync(dbContext);
 }
 
 // Configure the HTTP request pipeline.

@@ -362,3 +362,4 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /sales_portal.api/.env
+/sales_portal.tests/sales_portal.tests.csproj

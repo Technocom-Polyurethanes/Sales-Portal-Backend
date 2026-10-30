@@ -15,8 +15,12 @@ public static class ReferenceRules
         "JUL.", "AUG.", "SEP.", "OCT.", "NOV.", "DEC."
     ];
 
+    // Single source of truth for the month alternation used in both regexes.
+    private const string MonthAlternation =
+        @"JAN\.|FEB\.|MAR\.|APR\.|MAY|JUN\.|JUL\.|AUG\.|SEP\.|OCT\.|NOV\.|DEC\.";
+
     public const string Pattern =
-        @"^\d+/(JAN\.|FEB\.|MAR\.|APR\.|MAY|JUN\.|JUL\.|AUG\.|SEP\.|OCT\.|NOV\.|DEC\.)/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$";
+        @"^\d+/(" + MonthAlternation + @")/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$";
 
     public const string ExpectedFormat = "100/OCT./YL/AA";
 
@@ -25,7 +29,7 @@ public static class ReferenceRules
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex MonthRegex = new(
-        @"^\d+/(?<month>JAN\.|FEB\.|MAR\.|APR\.|MAY|JUN\.|JUL\.|AUG\.|SEP\.|OCT\.|NOV\.|DEC\.)/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$",
+        @"^\d+/(?<month>" + MonthAlternation + @")/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>Returns the month abbreviation for a 1-based month number.</summary>

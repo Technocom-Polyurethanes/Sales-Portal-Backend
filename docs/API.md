@@ -350,7 +350,9 @@ name.
 When `workspace.bankAccounts` is supplied, the list is reconciled: accounts with an
 existing `id` are updated, items with `id: "00000000-0000-0000-0000-000000000000"`
 (or omitted `id`) are created, and existing accounts not present in the list are
-deleted. Omit `bankAccounts` to leave the bank list untouched.
+deleted. Omit `bankAccounts` to leave the bank list untouched. Supplying an empty
+array (`[]`) returns `400` ProblemDetails with the message
+"At least one bank account is required. Omit bankAccounts to leave existing accounts unchanged."
 
 ```json
 {

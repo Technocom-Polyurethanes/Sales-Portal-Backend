@@ -1,0 +1,152 @@
+name: Build & Deploy to MonsterASP
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# Never run two production deployments at once, and never cancel one midway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  SOLUTION: Sales Portal.slnx
+  API_PROJECT: sales_portal.api/sales_portal.api.csproj
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The projects target net8.0, but the .slnx solution format needs SDK 9.0.200+.
+      # Installing both lets the 9.x SDK build the solution and the 8.x runtime run the tests.
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Restore
+        run: dotnet restore "${{ env.SOLUTION }}"
+
+      - name: Build
+        run: dotnet build "${{ env.SOLUTION }}" --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test "${{ env.SOLUTION }}" --configuration Release --no-build --verbosity normal
+
+      - name: Publish API
+        run: >
+          dotnet publish "${{ env.API_PROJECT }}"
+          --configuration Release
+          --no-restore
+          --output ./publish
+          -p:UseAppHost=false
+
+      - name: Upload publish artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sales-portal-api
+          path: ./publish
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to MonsterASP
+    needs: build-test
+    # Pull requests only build and test; only master pushes and manual runs deploy.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    # Windows runner because MonsterASP deploys through Web Deploy (msdeploy.exe).
+    runs-on: windows-latest
+    environment: production
+    steps:
+      - name: Download publish artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sales-portal-api
+          path: ./publish
+
+      - name: Locate or install Web Deploy
+        shell: pwsh
+        run: |
+          $msdeploy = "${env:ProgramFiles}\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+          if (-not (Test-Path $msdeploy)) {
+            $msdeploy = "${env:ProgramFiles(x86)}\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+          }
+          if (-not (Test-Path $msdeploy)) {
+            Write-Host "Web Deploy not found on the runner, installing it with Chocolatey..."
+            choco install webdeploy -y --no-progress
+            $msdeploy = "${env:ProgramFiles}\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+          }
+          if (-not (Test-Path $msdeploy)) {
+            throw "msdeploy.exe could not be found or installed."
+          }
+          "MSDEPLOY_PATH=$msdeploy" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Deploy with Web Deploy
+        shell: pwsh
+        env:
+          MONSTER_SERVER: ${{ secrets.MONSTER_WEBDEPLOY_SERVER }}      # e.g. site12345.siteasp.net
+          MONSTER_SITE: ${{ secrets.MONSTER_SITE_NAME }}                # e.g. site12345
+          MONSTER_USER: ${{ secrets.MONSTER_WEBDEPLOY_USER }}           # usually the same as the site ID
+          MONSTER_PASSWORD: ${{ secrets.MONSTER_WEBDEPLOY_PASSWORD }}
+        run: |
+          foreach ($name in 'MONSTER_SERVER','MONSTER_SITE','MONSTER_USER','MONSTER_PASSWORD') {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "env:$name").Value)) {
+              throw "Missing required secret for $name. See the setup notes in docs/DEPLOYMENT.md."
+            }
+          }
+
+          $source = Join-Path $env:GITHUB_WORKSPACE 'publish'
+          $computer = "https://$($env:MONSTER_SERVER):8172/msdeploy.axd?site=$($env:MONSTER_SITE)"
+
+          & $env:MSDEPLOY_PATH `
+            -verb:sync `
+            "-source:contentPath=`"$source`"" `
+            "-dest:contentPath=`"$($env:MONSTER_SITE)`",computerName=`"$computer`",userName=`"$($env:MONSTER_USER)`",password=`"$($env:MONSTER_PASSWORD)`",authtype=`"Basic`",includeAcls=`"False`"" `
+            -allowUntrusted `
+            -disableLink:AppPoolExtension `
+            -disableLink:ContentExtension `
+            -disableLink:CertificateExtension `
+            -verbose
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Web Deploy failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Smoke test /health
+        shell: pwsh
+        env:
+          APP_URL: ${{ vars.APP_URL }}   # e.g. https://api.yourdomain.com (repository or environment variable)
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:APP_URL)) {
+            Write-Host "APP_URL variable is not set, skipping the smoke test."
+            exit 0
+          }
+
+          $url = "$($env:APP_URL.TrimEnd('/'))/health"
+          # Give IIS time to restart the app and finish any startup migration.
+          for ($attempt = 1; $attempt -le 10; $attempt++) {
+            Start-Sleep -Seconds 15
+            try {
+              $response = Invoke-RestMethod -Uri $url -TimeoutSec 30
+              Write-Host "Attempt ${attempt}: $($response | ConvertTo-Json -Compress)"
+              if ($response.status -eq 'Healthy') { exit 0 }
+            } catch {
+              Write-Host "Attempt ${attempt} failed: $($_.Exception.Message)"
+            }
+          }
+          throw "Smoke test failed: $url did not report Healthy."
