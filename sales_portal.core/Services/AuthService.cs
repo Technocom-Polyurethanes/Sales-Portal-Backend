@@ -2,7 +2,9 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using sales_portal.core.Configuration;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -14,10 +16,12 @@ namespace sales_portal.core.Services;
 public class AuthService : IAuthService
 {
     private readonly IRepository<User> _users;
+    private readonly JwtOptions _jwt;
 
-    public AuthService(IRepository<User> users)
+    public AuthService(IRepository<User> users, IOptions<JwtOptions> jwt)
     {
         _users = users;
+        _jwt = jwt.Value;
     }
 
     public async Task<LoginResponseDto> LoginAsync(LoginRequestDto dto)
@@ -36,11 +40,11 @@ public class AuthService : IAuthService
             throw new UnauthorizedException("Invalid username or password.");
         }
 
-        var secret = Environment.GetEnvironmentVariable("JWT_SECRET")
-            ?? "SuperSecretTechnocomSalesPortalKey_MustBeAtLeast32BytesLong!";
-        var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "SalesPortalAPI";
-        var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "SalesPortalClient";
-        var expiresAt = DateTimeOffset.UtcNow.AddHours(12);
+        var secret = _jwt.Secret;
+        var issuer = _jwt.Issuer;
+        var audience = _jwt.Audience;
+        var expiryHours = _jwt.ExpiryHours <= 0 ? 12 : _jwt.ExpiryHours;
+        var expiresAt = DateTimeOffset.UtcNow.AddHours(expiryHours);
 
         var claims = new[]
         {

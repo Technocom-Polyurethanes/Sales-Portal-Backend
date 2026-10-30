@@ -39,6 +39,11 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
             ? draft.FormCode
             : company?.FormCode ?? "TF-06-01A";
 
+        var attentionEn = !string.IsNullOrWhiteSpace(draft.Attention)
+            ? draft.Attention
+            : customer?.ContactPerson;
+        var attentionAr = FirstNonEmpty(draft.AttentionAr, customer?.ContactPersonAr, attentionEn);
+
         var document = new OfferDocumentDto
         {
             Header = new DocumentHeaderDto
@@ -64,11 +69,15 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
                 CustomerId = customer?.Id ?? draft.CustomerId,
                 CustomerCode = customer?.CustomerCode ?? string.Empty,
                 Name = customer?.Name ?? string.Empty,
-                NameAr = customer?.NameAr,
+                NameAr = FirstNonEmpty(customer?.NameAr, customer?.Name),
                 Address = customer?.Address ?? string.Empty,
+                AddressAr = FirstNonEmpty(customer?.AddressAr, customer?.Address),
                 City = customer?.City,
+                CityAr = FirstNonEmpty(customer?.CityAr, customer?.City),
                 ContactPerson = customer?.ContactPerson,
-                Attention = !string.IsNullOrWhiteSpace(draft.Attention) ? draft.Attention : customer?.ContactPerson,
+                ContactPersonAr = FirstNonEmpty(customer?.ContactPersonAr, customer?.ContactPerson),
+                Attention = attentionEn,
+                AttentionAr = attentionAr,
                 TaxId = !string.IsNullOrWhiteSpace(draft.TaxId) ? draft.TaxId : customer?.TaxId,
                 Email = customer?.Email,
                 Phone = customer?.Phone
@@ -138,8 +147,11 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
                 .Select(account => new DocumentBankAccountDto
                 {
                     Bank = account.Bank,
+                    BankAr = FirstNonEmpty(account.BankAr, account.Bank),
                     Branch = account.Branch,
+                    BranchAr = FirstNonEmpty(account.BranchAr, account.Branch),
                     AccountHolderName = account.AccountHolderName,
+                    AccountHolderNameAr = FirstNonEmpty(account.AccountHolderNameAr, account.AccountHolderName),
                     AccountNumber = account.AccountNumber,
                     Swift = account.Swift,
                     Iban = account.Iban,
@@ -182,6 +194,9 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
 
         return document;
     }
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private static DocumentDeliveryBatchRowDto BuildDeliveryBatch(
         CalculatedDeliveryBatchDto batch,

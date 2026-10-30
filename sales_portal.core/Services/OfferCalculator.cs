@@ -24,6 +24,12 @@ public class OfferCalculator : IOfferCalculator
 
         var result = new OfferCalculateResponseDto { Draft = draft };
 
+        var referenceError = ReferenceRules.Validate(draft.Reference, draft.IssueDate);
+        if (referenceError != null)
+        {
+            result.ValidationErrors.Add(referenceError);
+        }
+
         if (catalog.Customer == null)
         {
             result.ValidationErrors.Add("Customer was not found.");

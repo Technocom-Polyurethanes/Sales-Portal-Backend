@@ -7,11 +7,8 @@ namespace sales_portal.infrastructure.Contexts;
 
 public static class DbInitializer
 {
-    public static async Task SeedAsync(AppDbContext context)
+    public static async Task SeedAsync(AppDbContext context, bool seedDemoUser)
     {
-        // Ensure database is created/migrated
-        await context.Database.MigrateAsync();
-
         // 1. Seed Default Payment Terms
         if (!await context.PaymentTerms.AnyAsync())
         {
@@ -26,8 +23,8 @@ public static class DbInitializer
 
         var defaultTerm = await context.PaymentTerms.FirstAsync(pt => pt.Code == "transfer-order");
 
-        // 2. Seed Admin User
-        if (!await context.Users.AnyAsync())
+        // 2. Seed Admin User (development only)
+        if (seedDemoUser && !await context.Users.AnyAsync())
         {
             context.Users.Add(new User
             {
@@ -76,8 +73,11 @@ public static class DbInitializer
                 NameAr = "شركة ديورافيت إيجيبت لصناعة الأدوات الصحية",
                 TaxId = "200-145-890",
                 ContactPerson = "Nader William",
+                ContactPersonAr = "نادر وليام",
                 City = "Badr City",
+                CityAr = "مدينة بدر",
                 Address = "10th of Ramadan City, Egypt",
+                AddressAr = "العاشر من رمضان، مصر",
                 DefaultPaymentTermId = defaultTerm.Id,
                 DefaultCurrency = "EGP"
             };
@@ -91,6 +91,9 @@ public static class DbInitializer
             }
 
             duravit.DefaultPaymentTermId ??= defaultTerm.Id;
+            duravit.ContactPersonAr ??= "نادر وليام";
+            duravit.CityAr ??= "مدينة بدر";
+            duravit.AddressAr ??= "العاشر من رمضان، مصر";
         }
 
         await context.SaveChangesAsync();
@@ -157,36 +160,58 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         // 6. Seed Bank Accounts (QNB & SAIB)
-        if (!await context.BankAccounts.AnyAsync())
+        var bankSeeds = new[]
         {
-            context.BankAccounts.AddRange(
-                new BankAccount
-                {
-                    Bank = "QNB",
-                    Branch = "Badr City",
-                    AccountHolderName = "شركة تكنوكوم للتوكيلات التجارية",
-                    AccountNumber = "20319811443",
-                    Swift = "QNBAEGCXXXX",
-                    Iban = "EG100037015208182031981144393",
-                    Currency = "EGP",
-                    SortOrder = 1,
-                    IsActive = true
-                },
-                new BankAccount
-                {
-                    Bank = "SAIB",
-                    Branch = "Shubra",
-                    AccountHolderName = "شركة تكنوكوم للتوكيلات التجارية",
-                    AccountNumber = "30203004433-10460",
-                    Swift = "SBNKEGCXXXX",
-                    Iban = "EG860035003003020300443310460",
-                    Currency = "EGP",
-                    SortOrder = 2,
-                    IsActive = true
-                }
-            );
-            await context.SaveChangesAsync();
+            new BankAccount
+            {
+                Bank = "QNB",
+                BankAr = "بنك قطر الوطني",
+                Branch = "Badr City",
+                BranchAr = "مدينة بدر",
+                AccountHolderName = "Technocom for Commercial Agencies",
+                AccountHolderNameAr = "شركة تكنوكوم للتوكيلات التجارية",
+                AccountNumber = "20319811443",
+                Swift = "QNBAEGCXXXX",
+                Iban = "EG100037015208182031981144393",
+                Currency = "EGP",
+                SortOrder = 1,
+                IsActive = true
+            },
+            new BankAccount
+            {
+                Bank = "SAIB",
+                BankAr = "البنك العربي الدولي (SAIB)",
+                Branch = "Shubra",
+                BranchAr = "شبرا",
+                AccountHolderName = "Technocom for Commercial Agencies",
+                AccountHolderNameAr = "شركة تكنوكوم للتوكيلات التجارية",
+                AccountNumber = "30203004433-10460",
+                Swift = "SBNKEGCXXXX",
+                Iban = "EG860035003003020300443310460",
+                Currency = "EGP",
+                SortOrder = 2,
+                IsActive = true
+            }
+        };
+
+        foreach (var bankSeed in bankSeeds)
+        {
+            var existingBank = await context.BankAccounts
+                .FirstOrDefaultAsync(account => account.Bank == bankSeed.Bank);
+
+            if (existingBank == null)
+            {
+                context.BankAccounts.Add(bankSeed);
+                continue;
+            }
+
+            // Only fill missing Arabic values so edits made in settings are preserved.
+            existingBank.BankAr ??= bankSeed.BankAr;
+            existingBank.BranchAr ??= bankSeed.BranchAr;
+            existingBank.AccountHolderNameAr ??= bankSeed.AccountHolderNameAr;
         }
+
+        await context.SaveChangesAsync();
 
         // 7. Seed Company Settings
         if (!await context.CompanySettings.AnyAsync())

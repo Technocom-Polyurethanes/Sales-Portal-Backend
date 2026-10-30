@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sales-portal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sales_portal
+      POSTGRES_USER: sales_portal
+      POSTGRES_PASSWORD: sales_portal_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - sales_portal_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sales_portal -d sales_portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sales_portal_pgdata:

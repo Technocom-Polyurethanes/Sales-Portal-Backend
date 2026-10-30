@@ -19,4 +19,8 @@ public class OfferListItemDto
     public string? CreatedByName { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public int VersionsCount { get; set; }
+    public string? LastModifiedByName { get; set; }
+    public DateTimeOffset LastModifiedAt { get; set; }
+    public Guid? ParentOfferId { get; set; }
 }
