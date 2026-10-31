@@ -224,13 +224,10 @@ public class OfferService : IOfferService
         var monthStart = new DateOnly(year, month, 1);
         var nextMonthStart = monthStart.AddMonths(1);
 
-        var sequences = await _offers.GetAll()
+        var maxSeq = await _offers.GetAll()
             .AsNoTracking()
             .Where(o => o.IssueDate >= monthStart && o.IssueDate < nextMonthStart)
-            .Select(o => o.SerialNumber)
-            .ToListAsync(cancellationToken);
-
-        var maxSeq = sequences.Count == 0 ? 0 : sequences.Max();
+            .MaxAsync(o => (int?)o.SerialNumber, cancellationToken) ?? 0;
 
         if (maxSeq <= 0)
         {

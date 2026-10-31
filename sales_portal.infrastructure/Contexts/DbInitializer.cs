@@ -41,7 +41,10 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        // 3. Seed Package Types
+        // 3. Bootstrap Admin User (production first-login)
+        await BootstrapAdminAsync(context);
+
+        // 4. Seed Package Types
         var packageTypeSeeds = new[]
         {
             new PackageType { Name = "Drum", NameAr = "برميل", IsActive = true },
@@ -62,7 +65,7 @@ public static class DbInitializer
 
         var drumPackageType = await context.PackageTypes.FirstAsync(pt => pt.Name == "Drum");
 
-        // 4. Seed Default Customer (Duravit Egypt)
+        // 5. Seed Default Customer (Duravit Egypt)
         var duravit = await context.Customers.FirstOrDefaultAsync(c => c.CustomerCode == "CUST-DURAVIT");
         if (duravit == null)
         {
@@ -98,7 +101,7 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
 
-        // 5. Seed Materials (Polyol & Iso) with default packaging information
+        // 6. Seed Materials (Polyol & Iso) with default packaging information
         var materialSeeds = new[]
         {
             new Material
@@ -159,7 +162,7 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
 
-        // 6. Seed Bank Accounts (QNB & SAIB)
+        // 7. Seed Bank Accounts (QNB & SAIB)
         var bankSeeds = new[]
         {
             new BankAccount
@@ -213,7 +216,7 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
 
-        // 7. Seed Company Settings
+        // 8. Seed Company Settings
         if (!await context.CompanySettings.AnyAsync())
         {
             context.CompanySettings.Add(new CompanySettings
@@ -228,5 +231,54 @@ public static class DbInitializer
             });
             await context.SaveChangesAsync();
         }
+    }
+
+    /// <summary>
+    /// Creates an initial admin user when the Users table is empty and all required
+    /// bootstrap environment variables are provided. This is intended for the very first
+    /// production deployment so that someone can log in and start using the system.
+    /// </summary>
+    public static async Task BootstrapAdminAsync(AppDbContext context)
+    {
+        // Only run when no users exist at all
+        if (await context.Users.AnyAsync())
+        {
+            return;
+        }
+
+        var username = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_USERNAME");
+        var password = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_PASSWORD");
+        var fullName = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_FULL_NAME");
+        var initials = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_INITIALS");
+        var email = Environment.GetEnvironmentVariable("BOOTSTRAP_ADMIN_EMAIL");
+
+        // All four required variables must be present
+        if (string.IsNullOrWhiteSpace(username) ||
+            string.IsNullOrWhiteSpace(password) ||
+            string.IsNullOrWhiteSpace(fullName) ||
+            string.IsNullOrWhiteSpace(initials))
+        {
+            return; // Silently skip bootstrap when variables are not set
+        }
+
+        // Enforce minimum password length
+        if (password.Length < 12)
+        {
+            throw new InvalidOperationException(
+                "BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters long.");
+        }
+
+        context.Users.Add(new User
+        {
+            Username = username.Trim(),
+            FullName = fullName.Trim(),
+            Initials = initials.Trim().ToUpperInvariant(),
+            Email = string.IsNullOrWhiteSpace(email) ? null : email.Trim(),
+            Role = UserRole.Admin,
+            IsActive = true,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password)
+        });
+
+        await context.SaveChangesAsync();
     }
 }

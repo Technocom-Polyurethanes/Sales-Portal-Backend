@@ -229,6 +229,41 @@ public class ArabicFieldsTests
     }
 
     [Fact]
+    public async Task Settings_rejects_empty_bank_accounts_list()
+    {
+        using var db = new TestDatabase();
+        var service = TestFactory.CreateSettingsService(db.Context);
+        db.Context.BankAccounts.Add(new BankAccount
+        {
+            Bank = "QNB",
+            Branch = "Badr City",
+            AccountHolderName = "Technocom for Commercial Agencies",
+            AccountNumber = "123",
+            Swift = "SWIFT",
+            Iban = "EG",
+            Currency = "EGP",
+            SortOrder = 1,
+            IsActive = true
+        });
+        await db.Context.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(() =>
+            service.UpdateAsync(
+                new UpdateSettingsDto
+                {
+                    Workspace = new WorkspaceSettingsDto
+                    {
+                        BankAccounts = [] // Empty list - should be rejected
+                    }
+                },
+                CancellationToken.None));
+
+        Assert.NotNull(exception.FieldErrors);
+        Assert.Contains("workspace.bankAccounts", exception.FieldErrors!.Keys);
+        Assert.Contains("At least one bank account is required", exception.FieldErrors["workspace.bankAccounts"][0]);
+    }
+
+    [Fact]
     public async Task Settings_rejects_bank_accounts_without_bank_branch_or_account_number()
     {
         using var db = new TestDatabase();

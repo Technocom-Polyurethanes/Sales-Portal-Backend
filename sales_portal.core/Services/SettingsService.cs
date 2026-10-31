@@ -117,6 +117,18 @@ public class SettingsService : ISettingsService
         IReadOnlyList<BankAccountDto> bankAccounts,
         CancellationToken cancellationToken)
     {
+        // Empty list is not allowed - would delete all accounts. Require at least one
+        // account or omit the property entirely to leave existing accounts unchanged.
+        if (bankAccounts.Count == 0)
+        {
+            throw new ValidationException(
+                "At least one bank account is required. Omit bankAccounts to leave existing accounts unchanged.",
+                new Dictionary<string, string[]>
+                {
+                    ["workspace.bankAccounts"] = ["At least one bank account is required."]
+                });
+        }
+
         ValidateBankAccounts(bankAccounts);
 
         var existing = await _bankAccounts.GetAll().ToListAsync(cancellationToken);
