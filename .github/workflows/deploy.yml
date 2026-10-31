@@ -110,8 +110,13 @@ jobs:
             }
           }
 
+          # msdeploy parses its own quotes inside each argument. PowerShell 7.3+ re-escapes
+          # embedded quotes by default, which msdeploy rejects ("Unrecognized argument"),
+          # so pass native arguments through verbatim.
+          $PSNativeCommandArgumentPassing = 'Legacy'
+
           $source = Join-Path $env:GITHUB_WORKSPACE 'publish'
-          $computer = "https://$($env:MONSTER_SERVER):8172/msdeploy.axd?site=$($env:MONSTER_SITE)"
+          $computer ="https://$($env:MONSTER_SERVER):8172/msdeploy.axd?site=$($env:MONSTER_SITE)"
 
           & $env:MSDEPLOY_PATH `
             -verb:sync `
