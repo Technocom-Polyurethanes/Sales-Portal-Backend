@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -24,6 +25,49 @@ builder.Services
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Model-binding failures (e.g. an invalid GUID) get the same ProblemDetails shape as
+        // other errors, with a readable `detail` the frontend can show as-is.
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var messages = context.ModelState
+                .Where(entry => entry.Value is { Errors.Count: > 0 })
+                .SelectMany(entry => entry.Value!.Errors.Select(error =>
+                {
+                    var text = string.IsNullOrWhiteSpace(error.ErrorMessage)
+                        ? error.Exception?.Message ?? "The value is not valid."
+                        : error.ErrorMessage;
+
+                    // System.Text.Json appends "Path: $.field | LineNumber: ..." to its messages.
+                    var pathIndex = text.IndexOf(" Path: ", StringComparison.Ordinal);
+                    if (pathIndex >= 0)
+                    {
+                        text = text[..pathIndex];
+                    }
+
+                    var field = entry.Key.TrimStart('$', '.');
+                    return string.IsNullOrEmpty(field) ? text : $"{field}: {text}";
+                }))
+                .ToList();
+
+            var detail = messages.Count > 0 ? string.Join(" ", messages) : "The request is not valid.";
+            var problem = new ValidationProblemDetails(context.ModelState)
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "One or more validation errors occurred.",
+                Type = "https://httpstatuses.io/400",
+                Detail = detail
+            };
+            problem.Extensions["message"] = detail;
+
+            return new ObjectResult(problem)
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                ContentTypes = { "application/problem+json" }
+            };
+        };
     });
 
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));

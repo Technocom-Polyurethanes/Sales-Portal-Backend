@@ -8,6 +8,7 @@ using Xunit;
 
 namespace SalesPortal.Tests;
 
+[Collection(ProcessEnvironment.Name)]
 public class BootstrapAdminTests
 {
     [Fact]

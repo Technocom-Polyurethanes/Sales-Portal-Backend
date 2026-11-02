@@ -51,7 +51,7 @@ public class OfferListTests
     {
         using var db = new TestDatabase();
         var basics = TestFactory.SeedBasics(db.Context);
-        var older = TestFactory.AddOffer(db.Context, basics, "100/OCT./YL/AA", version: 1);
+        var older = TestFactory.AddOffer(db.Context, basics, "100/OCT./YL/AA", version: 1, status: OfferStatus.Issued);
         TestFactory.AddOffer(db.Context, basics, "101/OCT./YL/AA", version: 1);
 
         var service = TestFactory.CreateOfferService(db.Context);
@@ -60,7 +60,7 @@ public class OfferListTests
 
         await service.UpdateStatusAsync(
             older.Id,
-            new UpdateOfferStatusDto { Status = OfferStatus.Issued },
+            new UpdateOfferStatusDto { Status = OfferStatus.Accepted },
             basics.SecondUser.Id,
             CancellationToken.None);
 

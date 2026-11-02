@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
@@ -14,6 +15,7 @@ using Xunit;
 
 namespace SalesPortal.Tests;
 
+[Collection(ProcessEnvironment.Name)]
 public class ApiContractTests : IClassFixture<SalesPortalApiFactory>
 {
     private readonly SalesPortalApiFactory _factory;
@@ -76,24 +78,29 @@ public sealed class SalesPortalApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
         builder.UseSetting("Database:AutoMigrate", "false");
 
+        // Fixed once per factory: the options callback runs for every request scope.
+        var databaseName = $"sales-portal-api-tests-{Guid.NewGuid()}";
+
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.RemoveAll<AppDbContext>();
             services.AddDbContext<AppDbContext>(options =>
-                options.UseInMemoryDatabase($"sales-portal-api-tests-{Guid.NewGuid()}"));
+                options.UseInMemoryDatabase(databaseName)
+                    .ConfigureWarnings(warnings =>
+                        warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
         });
     }
 
-    public HttpClient CreateAuthenticatedClient()
+    public HttpClient CreateAuthenticatedClient(Guid? userId = null)
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", CreateToken());
+            new AuthenticationHeaderValue("Bearer", CreateToken(userId ?? Guid.NewGuid()));
         return client;
     }
 
-    private static string CreateToken()
+    private static string CreateToken(Guid userId)
     {
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtSecret)),
@@ -104,7 +111,7 @@ public sealed class SalesPortalApiFactory : WebApplicationFactory<Program>
             audience: JwtAudience,
             claims: new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
                 new Claim(ClaimTypes.Role, "Admin")
             },
             expires: DateTime.UtcNow.AddHours(1),

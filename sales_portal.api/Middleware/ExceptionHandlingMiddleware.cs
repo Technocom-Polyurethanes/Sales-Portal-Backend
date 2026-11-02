@@ -33,13 +33,22 @@ public class ExceptionHandlingMiddleware
         catch (OfferValidationException exception)
         {
             // Offer validation carries a flat list of user-facing messages plus warnings
-            // that the offer builder renders; keep its documented response shape.
+            // that the offer builder renders; keep message/errors/warnings and add the
+            // ProblemDetails fields, with every error readable in `detail`.
+            var detail = exception.Errors.Count > 0
+                ? string.Join(" ", exception.Errors)
+                : exception.Message;
+
             await WriteJsonAsync(context, StatusCodes.Status400BadRequest, new
             {
+                type = "https://httpstatuses.io/400",
+                title = "One or more validation errors occurred.",
+                status = StatusCodes.Status400BadRequest,
+                detail,
                 message = exception.Message,
                 errors = exception.Errors,
                 warnings = exception.Warnings
-            });
+            }, "application/problem+json");
         }
         catch (ValidationException exception)
         {

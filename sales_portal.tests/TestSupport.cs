@@ -8,6 +8,13 @@ using sales_portal.infrastructure.Contexts;
 
 namespace SalesPortal.Tests;
 
+// Tests that read or set process-wide environment variables (JWT_*, BOOTSTRAP_ADMIN_*,
+// host startup) share this collection so xUnit runs them one at a time.
+internal static class ProcessEnvironment
+{
+    public const string Name = "ProcessEnvironment";
+}
+
 internal sealed class TestDatabase : IDisposable
 {
     public TestDatabase()
