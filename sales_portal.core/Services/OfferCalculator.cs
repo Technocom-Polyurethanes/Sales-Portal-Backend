@@ -20,7 +20,7 @@ public class OfferCalculator : IOfferCalculator
 
     public OfferCalculateResponseDto Calculate(OfferDraftDto draft, OfferCatalog catalog)
     {
-        NormalizeIds(draft);
+        var replacedIds = NormalizeIds(draft);
 
         var result = new OfferCalculateResponseDto { Draft = draft };
 
@@ -211,6 +211,13 @@ public class OfferCalculator : IOfferCalculator
                     continue;
                 }
 
+                // Follow ids that NormalizeIds replaced so the allocation reaches the right row.
+                if (replacedIds.TryGetValue((allocation.OfferLineId, allocation.OfferLinePackagingId), out var finalIds))
+                {
+                    allocation.OfferLineId = finalIds.LineId;
+                    allocation.OfferLinePackagingId = finalIds.PackagingId;
+                }
+
                 CalculatedOfferLineDto? line = null;
                 CalculatedLinePackagingDto? packaging = null;
 
@@ -352,15 +359,21 @@ public class OfferCalculator : IOfferCalculator
         return result;
     }
 
-    private static void NormalizeIds(OfferDraftDto draft)
+    // Replaces empty/duplicate ids and returns (original line id, original packaging id) ->
+    // final ids. Pairs that are empty or still ambiguous (both ids duplicated) are not mapped
+    // and fall back to the material/package type matching below.
+    private static Dictionary<(Guid LineId, Guid PackagingId), (Guid LineId, Guid PackagingId)> NormalizeIds(
+        OfferDraftDto draft)
     {
         var lineIds = new HashSet<Guid>();
         var packagingIds = new HashSet<Guid>();
         var batchIds = new HashSet<Guid>();
         var allocationIds = new HashSet<Guid>();
+        var replaced = new Dictionary<(Guid, Guid), (Guid LineId, Guid PackagingId)>();
 
         foreach (var line in draft.Lines)
         {
+            var originalLineId = line.Id;
             if (line.Id == Guid.Empty || lineIds.Contains(line.Id))
             {
                 line.Id = Guid.NewGuid();
@@ -370,12 +383,18 @@ public class OfferCalculator : IOfferCalculator
 
             foreach (var packaging in line.Packaging)
             {
+                var originalPackagingId = packaging.Id;
                 if (packaging.Id == Guid.Empty || packagingIds.Contains(packaging.Id))
                 {
                     packaging.Id = Guid.NewGuid();
                 }
 
                 packagingIds.Add(packaging.Id);
+
+                if (originalLineId != Guid.Empty && originalPackagingId != Guid.Empty)
+                {
+                    replaced.TryAdd((originalLineId, originalPackagingId), (line.Id, packaging.Id));
+                }
             }
         }
 
@@ -398,6 +417,8 @@ public class OfferCalculator : IOfferCalculator
                 allocationIds.Add(allocation.Id);
             }
         }
+
+        return replaced;
     }
 
     private static string BuildPackagingText(IReadOnlyList<CalculatedLinePackagingDto> rows, bool arabic)

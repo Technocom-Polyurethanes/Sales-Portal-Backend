@@ -461,6 +461,11 @@ public class OfferService : IOfferService
                 $"Cannot transition an offer from {offer.Status} to {dto.Status}.");
         }
 
+        if (dto.Status == OfferStatus.Issued && offer.Status != OfferStatus.Issued)
+        {
+            await ValidateForIssueAsync(id, cancellationToken);
+        }
+
         offer.Status = dto.Status;
         offer.UpdatedByUserId = currentUserId;
 
@@ -485,6 +490,25 @@ public class OfferService : IOfferService
 
         return await GetByIdAsync(id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after status update.");
+    }
+
+    // Drafts may be saved incomplete, so "at least one line" is enforced only when issuing.
+    private async Task ValidateForIssueAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var source = await FullOfferQuery()
+            .AsNoTracking()
+            .FirstAsync(o => o.Id == id, cancellationToken);
+
+        var draft = MapToDraft(source);
+        var catalog = await LoadCatalogAsync(draft, cancellationToken);
+        var calculation = _calculator.Calculate(draft, catalog);
+
+        if (calculation.Lines.Count == 0)
+        {
+            calculation.ValidationErrors.Add("At least one line is required to issue an offer.");
+        }
+
+        ThrowIfInvalid(calculation);
     }
 
     private async Task<OfferCatalog> LoadCatalogAsync(
