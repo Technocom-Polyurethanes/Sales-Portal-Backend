@@ -60,6 +60,14 @@ internal static class TestFactory
     public static CustomerService CreateCustomerService(AppDbContext context)
         => new(new Repository<Customer>(context));
 
+    public static ImportService CreateImportService(AppDbContext context)
+        => new(
+            new Repository<ImportBatch>(context),
+            new Repository<Customer>(context),
+            new Repository<Material>(context),
+            new Repository<PaymentTerm>(context),
+            new Repository<User>(context));
+
     public static SettingsService CreateSettingsService(AppDbContext context)
         => new(
             new Repository<CompanySettings>(context),
@@ -150,3 +158,33 @@ internal sealed record SeededBasics(
     User SecondUser,
     Customer Customer,
     PaymentTerm PaymentTerm);
+
+internal static class ImportTestFiles
+{
+    public static MemoryStream Csv(string text) => new(System.Text.Encoding.UTF8.GetBytes(text));
+
+    public static MemoryStream BomCsv(string text) => new(
+    [
+        0xEF, 0xBB, 0xBF,
+        .. System.Text.Encoding.UTF8.GetBytes(text)
+    ]);
+
+    public const string CustomerHeader =
+        "customerCode,erpNextId,name,nameAr,taxId,contactPerson,contactPersonAr,email,phone,city,cityAr,address,addressAr,defaultPaymentTerm,defaultCurrency";
+
+    public const string MaterialHeader =
+        "itemCode,erpNextItemCode,name,category,referencePricePerKg,uom,isActive,defaultWeightKg";
+
+    public const string PriceHeader = "itemCode,referencePricePerKg";
+
+    public static Task<sales_portal.core.DTOs.ImportPreviewDto> PreviewAsync(
+        AppDbContext context,
+        string type,
+        string csv,
+        string fileName = "import.csv")
+    {
+        var stream = Csv(csv);
+        return TestFactory.CreateImportService(context)
+            .PreviewAsync(type, stream, fileName, stream.Length, null, CancellationToken.None);
+    }
+}

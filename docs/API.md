@@ -493,6 +493,144 @@ metadata, items, totals and delivery schedule. When an Arabic value is missing, 
 document returns the English value in the corresponding `...Ar` field, so Arabic
 templates never render blank bill-to or bank details. English fields are unchanged.
 
+## Data import
+
+Three import types move spreadsheet data into the workspace:
+
+| Type | Route segment | Updates |
+| --- | --- | --- |
+| Customers | `customers` | `Customer` upsert |
+| Materials & products | `materials` | `Material` upsert |
+| Price list | `prices` | `Material.ReferencePricePerKg` |
+
+The flow is three calls: download a template, preview a file, commit the preview.
+The parsed preview is stored on the server; the commit never trusts client rows.
+
+### `GET /api/import/templates/{type}`
+
+Returns a UTF-8 CSV file (with BOM, so Excel keeps Arabic text) whose header row is
+the exact template of that type. `Content-Disposition` names it
+`{type}-template.csv`.
+
+| Type | Columns |
+| --- | --- |
+| `customers` | `customerCode, erpNextId, name, nameAr, taxId, contactPerson, contactPersonAr, email, phone, city, cityAr, address, addressAr, defaultPaymentTerm, defaultCurrency` |
+| `materials` | `itemCode, erpNextItemCode, name, category, referencePricePerKg, uom, isActive, defaultWeightKg` |
+| `prices` | `itemCode, referencePricePerKg` |
+
+Header matching is case-insensitive and trimmed. Unknown columns are ignored.
+
+### `POST /api/import/{type}/preview` (Admin)
+
+`multipart/form-data` with one `file` part: a `.xlsx` (first worksheet) or `.csv`
+file. Limits: 5 MB and 5,000 data rows. Rows that are completely empty are ignored.
+An unknown `type` returns `400` ProblemDetails.
+
+```json
+{
+  "importId": "b1a3f0b8-3c2e-4fe2-8f4e-7a2f0f6b9c21",
+  "summary": { "total": 3, "new": 1, "update": 1, "unchanged": 0, "error": 1 },
+  "rows": [
+    {
+      "rowNumber": 2,
+      "status": "new",
+      "errors": [],
+      "values": { "customerCode": "CUST-001", "name": "Duravit Egypt", "nameAr": "ديورافيت", "defaultCurrency": "EGP" },
+      "existing": null,
+      "changes": []
+    },
+    {
+      "rowNumber": 3,
+      "status": "update",
+      "errors": [],
+      "values": { "customerCode": "CUST-002", "name": "New name" },
+      "existing": { "customerCode": "CUST-002", "name": "Old name" },
+      "changes": [{ "field": "name", "oldValue": "Old name", "newValue": "New name" }]
+    },
+    {
+      "rowNumber": 4,
+      "status": "error",
+      "errors": ["Email address 'not-an-email' is not valid.", "Unknown currency 'XYZ'."],
+      "values": { "customerCode": "CUST-003", "email": "not-an-email", "defaultCurrency": "XYZ" },
+      "existing": null,
+      "changes": []
+    }
+  ]
+}
+```
+
+- `status` is one of `new`, `update`, `unchanged`, `error`.
+- `rowNumber` is the spreadsheet row, so the header is row 1 and the first data row
+  is row 2.
+- `values` only holds the template columns. `existing` is present for `update` and
+  `unchanged` rows. `changes` only lists the fields the file actually filled in.
+- A row with errors never blocks the other rows; it is counted in `summary.error`.
+
+Validation rules:
+
+- Required: `customerCode` and, for new customers, `name` and `address`;
+  `itemCode` and, for new materials, `name` and `category`; `itemCode` and
+  `referencePricePerKg` for prices.
+- A code repeated inside the file is an error on the later row.
+- Material `category` is one of `Polyol`, `Iso`, `System`, `Additive`.
+- `referencePricePerKg` and `defaultWeightKg` are numbers, `>= 0`.
+- `defaultCurrency` is one of `EGP, USD, EUR, GBP, SAR, AED, KWD, QAR`; empty
+  defaults to `EGP` for new customers.
+- `defaultPaymentTerm` is resolved by code, English label or Arabic label of an
+  existing payment term. It is returned as the resolved English label.
+- `email` must be a valid address.
+- `isActive` accepts `true/false`, `yes/no`, `1/0`; empty defaults to `true` for
+  new materials.
+- Price rows need a material that already exists (`itemCode`, falling back to
+  `erpNextItemCode`) and update only `ReferencePricePerKg`.
+
+### `POST /api/import/{importId}/commit` (Admin)
+
+Applies every row that is not an error in one transaction. Records are upserted by
+`CustomerCode` / `ItemCode`, falling back to `ErpNextId` / `ErpNextItemCode`.
+Empty cells leave the stored value unchanged. The call is idempotent: committing
+the same `importId` again returns the stored result and writes nothing.
+
+```json
+{
+  "importId": "b1a3f0b8-3c2e-4fe2-8f4e-7a2f0f6b9c21",
+  "created": 10,
+  "updated": 3,
+  "skipped": 2,
+  "failed": 1
+}
+```
+
+`skipped` counts unchanged rows, `failed` counts preview rows with errors (and rows
+whose target disappeared). An unknown `importId` returns `404`.
+
+### `GET /api/import/history?page=1&pageSize=20`
+
+The paged commit log, newest first. Only committed imports are listed.
+
+```json
+{
+  "items": [
+    {
+      "id": "b1a3f0b8-3c2e-4fe2-8f4e-7a2f0f6b9c21",
+      "type": "customers",
+      "fileName": "customers-october.xlsx",
+      "createdByName": "Amgad Anwar",
+      "createdAt": "2026-10-24T09:00:00+00:00",
+      "committedAt": "2026-10-24T09:04:00+00:00",
+      "created": 10,
+      "updated": 3,
+      "skipped": 2,
+      "failed": 1
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 1,
+  "totalPages": 1
+}
+```
+
 ## Additive contract summary
 
 - Offer list: new `latestOnly`, `sortBy`, `sortDir` query parameters; new
@@ -509,5 +647,8 @@ templates never render blank bill-to or bank details. English fields are unchang
 - New API documentation covers the additive fields and JSON shapes below.
 - Offer next-sequence: `suggestedReference` is documented and always uses the same
   month rules as offer validation.
+- Data import: new `/api/import/templates/{type}`, `/api/import/{type}/preview`,
+  `/api/import/{importId}/commit` and `/api/import/history` routes; new
+  `import_batches` table.
 
 Nothing was removed, renamed or made required that was previously optional.

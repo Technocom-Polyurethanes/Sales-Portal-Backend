@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<OfferLinePackaging> OfferLinePackagings => Set<OfferLinePackaging>();
     public DbSet<OfferDeliveryBatch> OfferDeliveryBatches => Set<OfferDeliveryBatch>();
     public DbSet<OfferDeliveryAllocation> OfferDeliveryAllocations => Set<OfferDeliveryAllocation>();
+    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
