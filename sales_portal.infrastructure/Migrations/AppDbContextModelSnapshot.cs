@@ -267,6 +267,82 @@ namespace sales_portal.infrastructure.Migrations
                     b.ToTable("customers", (string)null);
                 });
 
+            modelBuilder.Entity("sales_portal.domain.Models.ImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CommittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("committed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<int>("CreatedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("created_count");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_count");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("RowsJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("rows_json");
+
+                    b.Property<int>("SkippedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("skipped_count");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("UpdatedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("updated_count");
+
+                    b.HasKey("Id")
+                        .HasName("pk_import_batches");
+
+                    b.HasIndex("CommittedAt")
+                        .HasDatabaseName("ix_import_batches_committed_at");
+
+                    b.ToTable("import_batches", (string)null);
+                });
+
             modelBuilder.Entity("sales_portal.domain.Models.Material", b =>
                 {
                     b.Property<Guid>("Id")
@@ -503,11 +579,11 @@ namespace sales_portal.infrastructure.Migrations
                     b.HasIndex("PaymentTermId")
                         .HasDatabaseName("ix_offers_payment_term_id");
 
-                    b.HasIndex("UpdatedByUserId")
-                        .HasDatabaseName("ix_offers_updated_by_user_id");
-
                     b.HasIndex("Reference")
                         .HasDatabaseName("ix_offers_reference");
+
+                    b.HasIndex("UpdatedByUserId")
+                        .HasDatabaseName("ix_offers_updated_by_user_id");
 
                     b.HasIndex("RootOfferId", "Version")
                         .IsUnique()

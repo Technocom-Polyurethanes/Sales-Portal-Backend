@@ -80,6 +80,7 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IOfferCalculator, OfferCalculator>();
 builder.Services.AddScoped<IOfferDocumentBuilder, OfferDocumentBuilder>();
 builder.Services.AddScoped<IOfferService, OfferService>();
+builder.Services.AddScoped<IImportService, ImportService>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(

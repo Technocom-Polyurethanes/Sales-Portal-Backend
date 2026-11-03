@@ -92,15 +92,15 @@ public sealed class SalesPortalApiFactory : WebApplicationFactory<Program>
         });
     }
 
-    public HttpClient CreateAuthenticatedClient(Guid? userId = null)
+    public HttpClient CreateAuthenticatedClient(Guid? userId = null, string role = "Admin")
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", CreateToken(userId ?? Guid.NewGuid()));
+            new AuthenticationHeaderValue("Bearer", CreateToken(userId ?? Guid.NewGuid(), role));
         return client;
     }
 
-    private static string CreateToken(Guid userId)
+    private static string CreateToken(Guid userId, string role)
     {
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtSecret)),
@@ -112,7 +112,7 @@ public sealed class SalesPortalApiFactory : WebApplicationFactory<Program>
             claims: new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-                new Claim(ClaimTypes.Role, "Admin")
+                new Claim(ClaimTypes.Role, role)
             },
             expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: credentials);
