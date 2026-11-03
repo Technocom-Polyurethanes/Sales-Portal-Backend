@@ -429,6 +429,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("reference");
 
+                    b.Property<Guid>("RootOfferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("root_offer_id");
+
                     b.Property<int>("SerialNumber")
                         .HasColumnType("integer")
                         .HasColumnName("serial_number");
@@ -470,6 +474,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by_user_id");
 
+                    b.Property<int>("ValidityDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("validity_days");
+
                     b.Property<int>("Version")
                         .HasColumnType("integer")
                         .HasColumnName("version");
@@ -498,9 +506,12 @@ namespace sales_portal.infrastructure.Migrations
                     b.HasIndex("UpdatedByUserId")
                         .HasDatabaseName("ix_offers_updated_by_user_id");
 
-                    b.HasIndex("Reference", "Version")
+                    b.HasIndex("Reference")
+                        .HasDatabaseName("ix_offers_reference");
+
+                    b.HasIndex("RootOfferId", "Version")
                         .IsUnique()
-                        .HasDatabaseName("ix_offers_reference_version");
+                        .HasDatabaseName("ix_offers_root_offer_id_version");
 
                     b.ToTable("offers", (string)null);
                 });

@@ -23,4 +23,5 @@ public class OfferListItemDto
     public string? LastModifiedByName { get; set; }
     public DateTimeOffset LastModifiedAt { get; set; }
     public Guid? ParentOfferId { get; set; }
+    public Guid RootOfferId { get; set; }
 }

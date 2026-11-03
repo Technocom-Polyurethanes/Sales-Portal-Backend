@@ -133,6 +133,12 @@ internal static class TestFactory
             SnapshotJson = "{}"
         };
 
+        // Versions that share a reference form one chain, like offers created through the service.
+        offer.RootOfferId = context.Offers
+            .Where(existing => existing.Reference == reference)
+            .Select(existing => (Guid?)existing.RootOfferId)
+            .FirstOrDefault() ?? offer.Id;
+
         context.Offers.Add(offer);
         context.SaveChanges();
         return offer;

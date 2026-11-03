@@ -9,6 +9,8 @@ public class DocumentMetadataDto
     public int Version { get; set; }
     public DateOnly IssueDate { get; set; }
     public DateOnly DueDate { get; set; }
+    public int ValidityDays { get; set; }
+    public DateOnly? ExpiryDate { get; set; }
     public string PaymentTerm { get; set; } = string.Empty;
     public string PaymentTermAr { get; set; } = string.Empty;
     public string SalesRepresentative { get; set; } = string.Empty;

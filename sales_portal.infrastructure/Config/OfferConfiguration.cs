@@ -14,8 +14,11 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.HasIndex(o => new { o.Reference, o.Version })
+        // The reference may change between versions, so a version is identified by its chain.
+        builder.HasIndex(o => new { o.RootOfferId, o.Version })
             .IsUnique();
+
+        builder.HasIndex(o => o.Reference);
 
         // Use PostgreSQL's system column as the concurrency token.
         builder.Property<uint>("xmin")

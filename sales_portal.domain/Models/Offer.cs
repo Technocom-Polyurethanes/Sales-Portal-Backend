@@ -12,6 +12,8 @@ namespace sales_portal.domain.Models
         public string Reference { get; set; } = default!;          // typed manually by user: 3090/OCT./YL/AA
         public int SerialNumber { get; set; }
         public int Version { get; set; } = 1;
+        /// <summary>Stable id shared by every version of an offer, so the reference may change between versions.</summary>
+        public Guid RootOfferId { get; set; }
         public Guid? ParentOfferId { get; set; }
         public Offer? ParentOffer { get; set; }
 
@@ -25,6 +27,7 @@ namespace sales_portal.domain.Models
         public string? Attention { get; set; }                     // editable contact person printed on the PDF
         public string? AttentionAr { get; set; }
         public string? TaxId { get; set; }                         // printed in the PDF Bill-To block
+        public int ValidityDays { get; set; }                      // days the offer stays valid after the issue date, 0 prints no validity row
         public DateOnly IssueDate { get; set; }
         public DateOnly DueDate { get; set; }
         public Guid PaymentTermId { get; set; }

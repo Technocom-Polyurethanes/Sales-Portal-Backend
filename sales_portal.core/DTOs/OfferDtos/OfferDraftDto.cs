@@ -9,6 +9,8 @@ public class OfferDraftDto
     public int SerialNumber { get; set; }
     public int Version { get; set; } = 1;
     public Guid? ParentOfferId { get; set; }
+    /// <summary>Id shared by every version of the offer, set by the server.</summary>
+    public Guid? RootOfferId { get; set; }
 
     public Guid CustomerId { get; set; }
     public Guid? CreatedByUserId { get; set; }
@@ -16,6 +18,8 @@ public class OfferDraftDto
     public string? Attention { get; set; }
     public string? AttentionAr { get; set; }
     public string? TaxId { get; set; }
+    /// <summary>Days the offer stays valid after the issue date, 0 prints no validity row.</summary>
+    public int ValidityDays { get; set; }
     public DateOnly IssueDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
     public DateOnly? DueDate { get; set; }
     public Guid PaymentTermId { get; set; }
