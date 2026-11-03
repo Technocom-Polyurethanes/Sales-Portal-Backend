@@ -89,6 +89,10 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
                 Version = draft.Version,
                 IssueDate = calculation.Totals.IssueDate,
                 DueDate = calculation.Totals.DueDate,
+                ValidityDays = draft.ValidityDays,
+                ExpiryDate = draft.ValidityDays > 0
+                    ? calculation.Totals.IssueDate.AddDays(draft.ValidityDays)
+                    : null,
                 PaymentTerm = catalog.PaymentTerm?.Label ?? string.Empty,
                 PaymentTermAr = catalog.PaymentTerm?.LabelAr ?? string.Empty,
                 SalesRepresentative = catalog.CreatedBy?.FullName ?? string.Empty,

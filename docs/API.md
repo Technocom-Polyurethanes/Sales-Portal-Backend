@@ -70,7 +70,7 @@ returned (`latestOnly=true`).
 }
 ```
 
-New response fields: `versionsCount` (all versions of the same reference),
+New response fields: `versionsCount` (all versions of the same offer chain), `rootOfferId`,
 `lastModifiedByName` and `lastModifiedAt` (the latest modifier, falling back to the
 creator). `latestOnly`, `sortBy` and `sortDir` are new query parameters with defaults
 that preserve the previous ordering behaviour.
@@ -110,6 +110,7 @@ Returns the full offer, including creator/modifier and document data.
   "attention": "Nader William",
   "attentionAr": "نادر وليام",
   "taxId": "200-145-890",
+  "validityDays": 7,
   "issueDate": "2026-10-21",
   "dueDate": "2026-11-20",
   "paymentTermId": "0e6a9e7a-5f8e-4f1e-9c6d-8f5f0c2f7b31",
@@ -213,6 +214,23 @@ request fields are `attentionAr` and the Arabic customer/bank fields described b
 
 The response is the same `OfferDetailDto` shown above.
 
+`validityDays` (0–365, default 0) is the number of days the offer stays valid after
+`issueDate`. `0` means no validity is printed. The offer detail returns `validityDays`
+and `rootOfferId`; the document metadata returns `validityDays` and `expiryDate`
+(`issueDate + validityDays`, `null` when 0).
+
+### Versions
+
+Every version of an offer shares a `rootOfferId`, a stable id that does not change when
+the reference changes. Versions are grouped by `rootOfferId`, not by `reference`.
+
+- `POST /api/offers` without `parentOfferId` starts a new chain (`version` as sent, 1 by default).
+- `POST /api/offers` with `parentOfferId` adds a version to the chain of that parent. The
+  server sets `version` to the highest version of the chain + 1 and ignores the value
+  sent. The `reference` may be changed in the new version and the chain stays the same.
+- `POST /api/offers/{id}/revise` copies the offer as the next version with the same reference.
+- A `reference` that belongs to another offer returns `409` ("An offer with this reference already exists.").
+
 ### Reference rules
 
 A reference must follow:
@@ -268,7 +286,7 @@ When a Draft is issued it is validated again with the same checks as create/upda
 (reference format and month, customer, payment term, materials, packaging and
 delivery allocations) plus **at least one line**. Failures return the `400` shown above
 and the offer stays a Draft. Drafts without lines can still be saved; only issuing
-requires a line. A duplicate `reference` + `version` on create returns `409`.
+requires a line. A `reference` used by another offer, or a duplicate version in the same chain, returns `409`.
 
 ## Customers
 
@@ -480,7 +498,9 @@ templates never render blank bill-to or bank details. English fields are unchang
 - Offer list: new `latestOnly`, `sortBy`, `sortDir` query parameters; new
   `versionsCount`, `lastModifiedByName`, `lastModifiedAt` response fields.
 - Offer detail: new `updatedByUserId`, `updatedByName`, `versionsCount`, `attentionAr`.
-- Offer draft: new `attentionAr`.
+- Offer draft: new `attentionAr`, `validityDays`.
+- Offer detail and list: new `rootOfferId`; offer detail and document metadata: new `validityDays` (and `expiryDate` in the document).
+- Versions are chained by `rootOfferId`, not by `reference` (see Versions).
 - Offer document: new `nameAr` (now always populated), `addressAr`, `cityAr`,
   `contactPersonAr`, `attentionAr`, `bankAr`, `branchAr`, `accountHolderNameAr`.
 - Customers: new `addressAr`, `cityAr`, `contactPersonAr` on lookup/list/detail and

@@ -9,6 +9,7 @@ public class OfferDetailDto
     public int SerialNumber { get; set; }
     public int Version { get; set; }
     public Guid? ParentOfferId { get; set; }
+    public Guid RootOfferId { get; set; }
     public Guid CustomerId { get; set; }
     public CustomerLookupItemDto? Customer { get; set; }
     public Guid CreatedByUserId { get; set; }
@@ -19,6 +20,7 @@ public class OfferDetailDto
     public string? Attention { get; set; }
     public string? AttentionAr { get; set; }
     public string? TaxId { get; set; }
+    public int ValidityDays { get; set; }
     public DateOnly IssueDate { get; set; }
     public DateOnly DueDate { get; set; }
     public Guid PaymentTermId { get; set; }

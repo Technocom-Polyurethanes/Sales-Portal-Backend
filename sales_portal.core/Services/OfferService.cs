@@ -67,7 +67,7 @@ public class OfferService : IOfferService
         {
             offers = offers.Where(o =>
                 !_offers.GetAll().Any(other =>
-                    other.Reference == o.Reference && other.Version > o.Version));
+                    other.RootOfferId == o.RootOfferId && other.Version > o.Version));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Search))
@@ -123,12 +123,13 @@ public class OfferService : IOfferService
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
-                VersionsCount = _offers.GetAll().Count(version => version.Reference == o.Reference),
+                VersionsCount = _offers.GetAll().Count(version => version.RootOfferId == o.RootOfferId),
                 LastModifiedByName = o.UpdatedBy != null
                     ? o.UpdatedBy.FullName
                     : o.CreatedBy.FullName,
                 LastModifiedAt = o.UpdatedAt,
-                ParentOfferId = o.ParentOfferId
+                ParentOfferId = o.ParentOfferId,
+                RootOfferId = o.RootOfferId
             })
             .ToListAsync(cancellationToken);
 
@@ -154,7 +155,7 @@ public class OfferService : IOfferService
 
         var detail = MapOfferDetails(offer);
         detail.VersionsCount = await _offers.GetAll()
-            .CountAsync(o => o.Reference == offer.Reference, cancellationToken);
+            .CountAsync(o => o.RootOfferId == offer.RootOfferId, cancellationToken);
         return detail;
     }
 
@@ -171,20 +172,20 @@ public class OfferService : IOfferService
 
     public async Task<List<OfferListItemDto>> GetVersionsAsync(Guid id, CancellationToken cancellationToken)
     {
-        var reference = await _offers.GetAll()
+        var rootOfferId = await _offers.GetAll()
             .AsNoTracking()
             .Where(o => o.Id == id)
-            .Select(o => o.Reference)
+            .Select(o => (Guid?)o.RootOfferId)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(reference))
+        if (rootOfferId == null)
         {
             throw new NotFoundException("Offer was not found.");
         }
 
         return await _offers.GetAll()
             .AsNoTracking()
-            .Where(o => o.Reference == reference)
+            .Where(o => o.RootOfferId == rootOfferId)
             .OrderByDescending(o => o.Version)
             .ThenByDescending(o => o.CreatedAt)
             .Select(o => new OfferListItemDto
@@ -204,12 +205,13 @@ public class OfferService : IOfferService
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
-                VersionsCount = _offers.GetAll().Count(version => version.Reference == o.Reference),
+                VersionsCount = _offers.GetAll().Count(version => version.RootOfferId == o.RootOfferId),
                 LastModifiedByName = o.UpdatedBy != null
                     ? o.UpdatedBy.FullName
                     : o.CreatedBy.FullName,
                 LastModifiedAt = o.UpdatedAt,
-                ParentOfferId = o.ParentOfferId
+                ParentOfferId = o.ParentOfferId,
+                RootOfferId = o.RootOfferId
             })
             .ToListAsync(cancellationToken);
     }
@@ -288,18 +290,30 @@ public class OfferService : IOfferService
         draft.Version = draft.Version <= 0 ? 1 : draft.Version;
         draft.CreatedByUserId = currentUserId;
         draft.Status = OfferStatus.Draft;
+        draft.RootOfferId = null;
+
+        // A new version belongs to the chain of its parent, whatever reference it carries.
+        // The server owns the version number, the client value is only used for a new chain.
+        if (draft.ParentOfferId is Guid parentOfferId)
+        {
+            var parent = await _offers.GetAll()
+                .AsNoTracking()
+                .Where(o => o.Id == parentOfferId)
+                .Select(o => new { o.RootOfferId })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new NotFoundException("The parent offer was not found.");
+
+            draft.RootOfferId = parent.RootOfferId;
+            draft.Version = await _offers.GetAll()
+                .Where(o => o.RootOfferId == parent.RootOfferId)
+                .MaxAsync(o => o.Version, cancellationToken) + 1;
+        }
 
         var catalog = await LoadCatalogAsync(draft, cancellationToken);
         var calculation = _calculator.Calculate(draft, catalog);
         ThrowIfInvalid(calculation);
 
-        if (await _offers.GetAll().AnyAsync(
-                o => o.Reference == calculation.Draft.Reference &&
-                     o.Version == calculation.Draft.Version,
-                cancellationToken))
-        {
-            throw new ConflictException("An offer with this reference and version already exists.");
-        }
+        await EnsureReferenceIsFreeAsync(calculation.Draft, excludeOfferId: null, cancellationToken);
 
         var offer = new Offer();
         ApplyCalculatedOffer(offer, calculation, currentUserId);
@@ -348,6 +362,8 @@ public class OfferService : IOfferService
 
         draft.Reference = draft.Reference.Trim();
         draft.Version = draft.Version <= 0 ? offer.Version : draft.Version;
+        draft.RootOfferId = offer.RootOfferId;
+        draft.ParentOfferId = offer.ParentOfferId;
         draft.CreatedByUserId = offer.CreatedByUserId;
         draft.Status = OfferStatus.Draft;
 
@@ -355,9 +371,11 @@ public class OfferService : IOfferService
         var calculation = _calculator.Calculate(draft, catalog);
         ThrowIfInvalid(calculation);
 
+        await EnsureReferenceIsFreeAsync(calculation.Draft, excludeOfferId: id, cancellationToken);
+
         if (await _offers.GetAll().AnyAsync(
                 o => o.Id != id &&
-                     o.Reference == calculation.Draft.Reference &&
+                     o.RootOfferId == offer.RootOfferId &&
                      o.Version == calculation.Draft.Version,
                 cancellationToken))
         {
@@ -406,7 +424,7 @@ public class OfferService : IOfferService
         }
 
         var nextVersion = await _offers.GetAll()
-            .Where(o => o.Reference == source.Reference)
+            .Where(o => o.RootOfferId == source.RootOfferId)
             .MaxAsync(o => o.Version, cancellationToken) + 1;
 
         var draft = MapToDraft(source);
@@ -511,6 +529,25 @@ public class OfferService : IOfferService
         ThrowIfInvalid(calculation);
     }
 
+    // A reference identifies one offer: its versions may share it or change it, but another offer may not take it.
+    private async Task EnsureReferenceIsFreeAsync(
+        OfferDraftDto draft,
+        Guid? excludeOfferId,
+        CancellationToken cancellationToken)
+    {
+        var rootOfferId = draft.RootOfferId;
+        var taken = await _offers.GetAll().AnyAsync(
+            o => o.Reference == draft.Reference &&
+                 (rootOfferId == null || o.RootOfferId != rootOfferId) &&
+                 (excludeOfferId == null || o.Id != excludeOfferId),
+            cancellationToken);
+
+        if (taken)
+        {
+            throw new ConflictException("An offer with this reference already exists.");
+        }
+    }
+
     private async Task<OfferCatalog> LoadCatalogAsync(
         OfferDraftDto draft,
         CancellationToken cancellationToken)
@@ -547,6 +584,7 @@ public class OfferService : IOfferService
             SerialNumber = offer.SerialNumber,
             Version = offer.Version,
             ParentOfferId = offer.ParentOfferId,
+            RootOfferId = offer.RootOfferId,
             CustomerId = offer.CustomerId,
             Customer = offer.Customer == null
                 ? null
@@ -570,6 +608,7 @@ public class OfferService : IOfferService
             Attention = offer.Attention,
             AttentionAr = offer.AttentionAr,
             TaxId = offer.TaxId,
+            ValidityDays = offer.ValidityDays,
             IssueDate = offer.IssueDate,
             DueDate = offer.DueDate,
             PaymentTermId = offer.PaymentTermId,
@@ -612,11 +651,13 @@ public class OfferService : IOfferService
             SerialNumber = offer.SerialNumber,
             Version = offer.Version,
             ParentOfferId = offer.ParentOfferId,
+            RootOfferId = offer.RootOfferId,
             CustomerId = offer.CustomerId,
             CreatedByUserId = offer.CreatedByUserId,
             Attention = offer.Attention,
             AttentionAr = offer.AttentionAr,
             TaxId = offer.TaxId,
+            ValidityDays = offer.ValidityDays,
             IssueDate = offer.IssueDate,
             DueDate = offer.DueDate,
             PaymentTermId = offer.PaymentTermId,
@@ -701,12 +742,14 @@ public class OfferService : IOfferService
         offer.SerialNumber = draft.SerialNumber;
         offer.Version = draft.Version <= 0 ? 1 : draft.Version;
         offer.ParentOfferId = draft.ParentOfferId;
+        offer.RootOfferId = draft.RootOfferId ?? offer.Id;
         offer.CustomerId = draft.CustomerId;
         offer.CreatedByUserId = createdByUserId;
         offer.UpdatedByUserId = updatedByUserId ?? createdByUserId;
         offer.Attention = draft.Attention;
         offer.AttentionAr = draft.AttentionAr;
         offer.TaxId = draft.TaxId;
+        offer.ValidityDays = draft.ValidityDays;
         offer.IssueDate = draft.IssueDate;
         offer.DueDate = calculation.Totals.DueDate;
         offer.PaymentTermId = draft.PaymentTermId;

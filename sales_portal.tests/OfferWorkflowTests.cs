@@ -114,6 +114,66 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
     }
 
     [Fact]
+    public async Task New_version_with_a_changed_reference_stays_in_the_same_offer_chain()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var firstId = await CreateDraftAsync(client, BuildPayload(seed, NextReference()));
+        var first = await ReadJsonAsync(await client.GetAsync($"/api/offers/{firstId}"));
+
+        // What the frontend sends when an offer is edited: a new reference, the parent and a stale version.
+        var revisedPayload = BuildPayload(seed, NextReference());
+        revisedPayload["parentOfferId"] = firstId;
+        var response = await client.PostAsJsonAsync("/api/offers", revisedPayload);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var revised = await ReadJsonAsync(response);
+
+        Assert.Equal(2, revised.GetProperty("version").GetInt32());
+        Assert.Equal(
+            first.GetProperty("rootOfferId").GetGuid(),
+            revised.GetProperty("rootOfferId").GetGuid());
+        Assert.Equal(2, revised.GetProperty("versionsCount").GetInt32());
+
+        var versions = await ReadJsonAsync(
+            await client.GetAsync($"/api/offers/{revised.GetProperty("id").GetGuid()}/versions"));
+        Assert.Equal(2, versions.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_new_offer_cannot_take_the_reference_of_another_offer()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var taken = NextReference();
+        await CreateDraftAsync(client, BuildPayload(seed, taken));
+        var otherId = await CreateDraftAsync(client, BuildPayload(seed, NextReference()));
+
+        var payload = BuildPayload(seed, taken);
+        payload["parentOfferId"] = otherId;
+        var response = await client.PostAsJsonAsync("/api/offers", payload);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Validity_days_round_trip_and_reach_the_document()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var payload = BuildPayload(seed, NextReference());
+        payload["validityDays"] = 14;
+
+        var id = await CreateDraftAsync(client, payload);
+        var detail = await ReadJsonAsync(await client.GetAsync($"/api/offers/{id}"));
+
+        Assert.Equal(14, detail.GetProperty("validityDays").GetInt32());
+        Assert.Equal("نادر وليام", detail.GetProperty("attentionAr").GetString());
+        var metadata = detail.GetProperty("document").GetProperty("metadata");
+        Assert.Equal(14, metadata.GetProperty("validityDays").GetInt32());
+        Assert.Equal("2026-11-04", metadata.GetProperty("expiryDate").GetString());
+    }
+
+    [Fact]
     public async Task Duplicate_reference_and_version_returns_409_with_a_readable_detail()
     {
         var seed = await SeedAsync();

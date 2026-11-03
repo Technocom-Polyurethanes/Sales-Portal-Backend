@@ -35,6 +35,11 @@ public class OfferCalculator : IOfferCalculator
             result.ValidationErrors.Add("Customer was not found.");
         }
 
+        if (draft.ValidityDays is < 0 or > 365)
+        {
+            result.ValidationErrors.Add("Offer validity must be between 0 and 365 days.");
+        }
+
         var dueDate = draft.DueDate ?? draft.IssueDate;
         if (catalog.PaymentTerm == null)
         {
