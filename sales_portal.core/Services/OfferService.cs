@@ -578,6 +578,37 @@ public class OfferService : IOfferService
             cancellationToken);
 
         catalog.PaymentTerm = catalog.PaymentTerms.FirstOrDefault(pt => pt.Id == draft.PaymentTermId);
+
+        // Bank accounts come from the active, sort-ordered catalog. A selection is resolved
+        // once here so the calculation, snapshot and printed document all see the same list.
+        var availableBanks = catalog.BankAccounts;
+        if (draft.BankAccountIds is null)
+        {
+            draft.BankAccountIds = availableBanks.Select(account => account.Id).ToArray();
+        }
+        else
+        {
+            if (draft.BankAccountIds.Length == 0)
+            {
+                throw new ValidationException("Select at least one bank account.");
+            }
+
+            var unknown = draft.BankAccountIds
+                .FirstOrDefault(id => availableBanks.All(account => account.Id != id));
+            if (unknown != Guid.Empty || draft.BankAccountIds.Contains(Guid.Empty))
+            {
+                var id = unknown != Guid.Empty ? unknown : Guid.Empty;
+                throw new ValidationException($"Bank account {id} was not found or is inactive.");
+            }
+
+            var selected = draft.BankAccountIds.ToHashSet();
+            catalog.BankAccounts = availableBanks
+                .Where(account => selected.Contains(account.Id))
+                .OrderBy(account => account.SortOrder)
+                .ToList();
+            draft.BankAccountIds = catalog.BankAccounts.Select(account => account.Id).ToArray();
+        }
+
         return catalog;
     }
 
@@ -638,6 +669,7 @@ public class OfferService : IOfferService
             Notes = offer.Notes,
             FormCode = offer.FormCode,
             Status = offer.Status,
+            BankAccountIds = offer.BankAccountIds,
             Subtotal = offer.Subtotal,
             OrderDiscount = offer.OrderDiscount,
             OrderDiscountPercent = offer.OrderDiscountPercent,
@@ -686,6 +718,7 @@ public class OfferService : IOfferService
             Notes = offer.Notes,
             FormCode = offer.FormCode,
             Status = offer.Status,
+            BankAccountIds = offer.BankAccountIds,
             OrderDiscount = offer.OrderDiscount,
             OrderDiscountPercent = 0m,
             TaxPercent = offer.TaxPercent,
@@ -778,6 +811,7 @@ public class OfferService : IOfferService
         offer.Notes = draft.Notes;
         offer.FormCode = calculation.Document.FormCode;
         offer.Status = draft.Status;
+        offer.BankAccountIds = draft.BankAccountIds;
         offer.Subtotal = calculation.Totals.Subtotal;
         offer.OrderDiscount = calculation.Totals.OrderDiscount;
         offer.OrderDiscountPercent = calculation.Totals.OrderDiscountPercent;

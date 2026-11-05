@@ -30,6 +30,9 @@ public class OfferDetailDto
     public string? Notes { get; set; }
     public string FormCode { get; set; } = string.Empty;
     public OfferStatus Status { get; set; }
+
+    /// <summary>Selected bank accounts; null for offers saved before per-offer selection existed.</summary>
+    public Guid[]? BankAccountIds { get; set; }
     public decimal Subtotal { get; set; }
     public decimal OrderDiscount { get; set; }
     public decimal OrderDiscountPercent { get; set; }

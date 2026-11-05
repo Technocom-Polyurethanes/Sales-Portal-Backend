@@ -428,6 +428,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("attention_ar");
 
+                    b.Property<Guid[]>("BankAccountIds")
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("bank_account_ids");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");

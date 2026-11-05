@@ -29,6 +29,9 @@ public class OfferDraftDto
     public string? FormCode { get; set; }
     public OfferStatus Status { get; set; } = OfferStatus.Draft;
 
+    /// <summary>Selected bank accounts; null means every active account at save time.</summary>
+    public Guid[]? BankAccountIds { get; set; }
+
     public decimal OrderDiscount { get; set; }
     public decimal OrderDiscountPercent { get; set; }
     public decimal TaxPercent { get; set; }

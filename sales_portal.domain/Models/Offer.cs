@@ -38,6 +38,12 @@ namespace sales_portal.domain.Models
         public string FormCode { get; set; } = "TF-06-01A";
         public OfferStatus Status { get; set; } = OfferStatus.Draft;
 
+        /// <summary>
+        /// Selected bank accounts, as a PostgreSQL uuid[]. No foreign key on purpose: deleting
+        /// an account in Settings must not fail because an offer used it. Legacy offers are null.
+        /// </summary>
+        public Guid[]? BankAccountIds { get; set; }
+
         // Money calculations (no extra expenses, advance payment, or balance due)
         public decimal Subtotal { get; set; }
         public decimal OrderDiscount { get; set; }
