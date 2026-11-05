@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -9,11 +10,16 @@ namespace sales_portal.core.Services;
 
 public class MaterialService : IMaterialService
 {
-    private readonly IRepository<Material> _materials;
+    // The package type names are part of the cached rows, so settings changes drop them as well.
+    private static readonly string[] MaterialRegions = [CacheRegions.Materials, CacheRegions.Catalog];
 
-    public MaterialService(IRepository<Material> materials)
+    private readonly IRepository<Material> _materials;
+    private readonly IReferenceDataCache _cache;
+
+    public MaterialService(IRepository<Material> materials, IReferenceDataCache? cache = null)
     {
         _materials = materials;
+        _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
     public async Task<PaginatedResultDto<MaterialLookupItemDto>> LookupAsync(
@@ -23,37 +29,15 @@ public class MaterialService : IMaterialService
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
-        var materials = BuildSearchQuery(query.Search)
-            .Where(m => m.IsActive);
+        var all = await LoadLookupListAsync();
+        var matches = InMemoryQuery.Search(
+            all,
+            query.Search,
+            m => m.ItemCode,
+            m => m.Name,
+            m => m.Category);
 
-        var totalCount = await materials.CountAsync(cancellationToken);
-        var items = await materials
-            .OrderBy(m => m.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(m => new MaterialLookupItemDto
-            {
-                Id = m.Id,
-                ItemCode = m.ItemCode,
-                Name = m.Name,
-                Category = m.Category,
-                ReferencePricePerKg = m.ReferencePricePerKg,
-                Uom = m.Uom,
-                DefaultPackageTypeId = m.DefaultPackageTypeId,
-                DefaultPackageTypeName = m.DefaultPackageType != null ? m.DefaultPackageType.Name : null,
-                DefaultPackageTypeNameAr = m.DefaultPackageType != null ? m.DefaultPackageType.NameAr : null,
-                DefaultWeightKg = m.DefaultWeightKg,
-                IsActive = m.IsActive
-            })
-            .ToListAsync(cancellationToken);
-
-        return new PaginatedResultDto<MaterialLookupItemDto>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        };
+        return InMemoryQuery.Page(matches, page, pageSize);
     }
 
     public Task<List<MaterialDto>> GetAllAsync(
@@ -70,9 +54,7 @@ public class MaterialService : IMaterialService
         bool? isActive,
         CancellationToken cancellationToken)
     {
-        return await BuildQuery(search, category, isActive)
-            .OrderBy(m => m.Name)
-            .ToListAsync(cancellationToken);
+        return (await FilterAsync(search, category, isActive)).ToList();
     }
 
     public async Task<PaginatedResultDto<MaterialDto>> GetPagedAsync(
@@ -86,32 +68,83 @@ public class MaterialService : IMaterialService
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
 
-        var query = BuildSearchQuery(search);
+        var matches = await FilterAsync(search, category, isActive);
+        return InMemoryQuery.Page(matches, page, pageSize);
+    }
+
+    private async Task<IReadOnlyList<MaterialDto>> FilterAsync(
+        string? search,
+        string? category,
+        bool? isActive)
+    {
+        var all = await LoadListAsync();
+        IReadOnlyList<MaterialDto> matches = InMemoryQuery.Search(
+            all,
+            search,
+            m => m.ItemCode,
+            m => m.Name,
+            m => m.Category);
+
         if (!string.IsNullOrWhiteSpace(category))
         {
-            var categoryTerm = category.Trim().ToLowerInvariant();
-            query = query.Where(m => m.Category.ToLower() == categoryTerm);
+            var categoryTerm = category.Trim();
+            matches = matches
+                .Where(m => string.Equals(m.Category, categoryTerm, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         if (isActive.HasValue)
         {
-            query = query.Where(m => m.IsActive == isActive.Value);
+            matches = matches.Where(m => m.IsActive == isActive.Value).ToList();
         }
 
-        var totalCount = await query.CountAsync(cancellationToken);
-        var items = await BuildQuery(search, category, isActive)
-            .OrderBy(m => m.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
+        return matches;
+    }
 
-        return new PaginatedResultDto<MaterialDto>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        };
+    // Active materials for the picker, ordered by the item code that is shown (never by the GUID).
+    private Task<IReadOnlyList<MaterialLookupItemDto>> LoadLookupListAsync()
+    {
+        return _cache.GetOrCreateAsync<IReadOnlyList<MaterialLookupItemDto>>(
+            "materials:lookup",
+            MaterialRegions,
+            async () =>
+            {
+                var rows = await _materials.GetAll()
+                    .AsNoTracking()
+                    .Where(m => m.IsActive)
+                    .Select(m => new MaterialLookupItemDto
+                    {
+                        Id = m.Id,
+                        ItemCode = m.ItemCode,
+                        Name = m.Name,
+                        Category = m.Category,
+                        ReferencePricePerKg = m.ReferencePricePerKg,
+                        Uom = m.Uom,
+                        DefaultPackageTypeId = m.DefaultPackageTypeId,
+                        DefaultPackageTypeName = m.DefaultPackageType != null ? m.DefaultPackageType.Name : null,
+                        DefaultPackageTypeNameAr = m.DefaultPackageType != null ? m.DefaultPackageType.NameAr : null,
+                        DefaultWeightKg = m.DefaultWeightKg,
+                        IsActive = m.IsActive
+                    })
+                    .ToListAsync(CancellationToken.None);
+
+                rows.Sort((a, b) => NaturalStringComparer.Instance.Compare(a.ItemCode, b.ItemCode));
+                return rows;
+            });
+    }
+
+    // Every material (active or not), ordered by item code.
+    private Task<IReadOnlyList<MaterialDto>> LoadListAsync()
+    {
+        return _cache.GetOrCreateAsync<IReadOnlyList<MaterialDto>>(
+            "materials:all",
+            MaterialRegions,
+            async () =>
+            {
+                var rows = await BuildQuery(null, null, null).ToListAsync(CancellationToken.None);
+                rows.Sort((a, b) => NaturalStringComparer.Instance.Compare(a.ItemCode, b.ItemCode));
+                return rows;
+            });
     }
 
     public async Task<MaterialDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
@@ -150,6 +183,7 @@ public class MaterialService : IMaterialService
 
         await _materials.AddAsync(material);
         await _materials.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Materials);
 
         return await GetByIdAsync(material.Id, cancellationToken)
             ?? throw new NotFoundException("Material was not found after creation.");
@@ -188,6 +222,7 @@ public class MaterialService : IMaterialService
 
         _materials.Update(material);
         await _materials.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Materials);
 
         return await GetByIdAsync(material.Id, cancellationToken);
     }

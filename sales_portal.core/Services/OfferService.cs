@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
@@ -22,6 +23,7 @@ public class OfferService : IOfferService
     private readonly IRepository<OfferDeliveryAllocation> _deliveryAllocations;
     private readonly ICatalogService _catalogService;
     private readonly IOfferCalculator _calculator;
+    private readonly IReferenceDataCache _cache;
 
     public OfferService(
         IRepository<Offer> offers,
@@ -30,8 +32,10 @@ public class OfferService : IOfferService
         IRepository<OfferDeliveryBatch> deliveryBatches,
         IRepository<OfferDeliveryAllocation> deliveryAllocations,
         ICatalogService catalogService,
-        IOfferCalculator calculator)
+        IOfferCalculator calculator,
+        IReferenceDataCache? cache = null)
     {
+        _cache = cache ?? NoReferenceDataCache.Instance;
         _offers = offers;
         _offerLines = offerLines;
         _offerLinePackagings = offerLinePackagings;
@@ -85,21 +89,29 @@ public class OfferService : IOfferService
         }
 
         var sortBy = (query.SortBy ?? string.Empty).Trim().ToLowerInvariant();
-        var ascending = string.Equals(query.SortDir, "asc", StringComparison.OrdinalIgnoreCase);
 
-        IOrderedQueryable<Offer> ordered = (sortBy, ascending) switch
-        {
-            ("createdat", true) => offers.OrderBy(o => o.CreatedAt),
-            ("createdat", false) => offers.OrderByDescending(o => o.CreatedAt),
-            ("reference", true) => offers.OrderBy(o => o.Reference),
-            ("reference", false) => offers.OrderByDescending(o => o.Reference),
-            ("total", true) => offers.OrderBy(o => o.Total),
-            ("total", false) => offers.OrderByDescending(o => o.Total),
-            ("issuedate", true) => offers.OrderBy(o => o.IssueDate),
-            ("issuedate", false) => offers.OrderByDescending(o => o.IssueDate),
-            (_, true) => offers.OrderBy(o => o.UpdatedAt),
-            _ => offers.OrderByDescending(o => o.UpdatedAt)
-        };
+        // Without an explicit direction the offer number sorts ascending and every other column
+        // keeps its previous default of newest/largest first.
+        var isIdSort = sortBy is "" or "id" or "number" or "serialnumber";
+        var ascending = string.IsNullOrWhiteSpace(query.SortDir)
+            ? isIdSort
+            : string.Equals(query.SortDir, "asc", StringComparison.OrdinalIgnoreCase);
+
+        IOrderedQueryable<Offer> ordered = isIdSort
+            ? (ascending ? offers.OrderByDisplayedId() : offers.OrderByDisplayedIdDescending())
+            : (sortBy, ascending) switch
+            {
+                ("createdat", true) => offers.OrderBy(o => o.CreatedAt),
+                ("createdat", false) => offers.OrderByDescending(o => o.CreatedAt),
+                ("reference", true) => offers.OrderBy(o => o.Reference),
+                ("reference", false) => offers.OrderByDescending(o => o.Reference),
+                ("total", true) => offers.OrderBy(o => o.Total),
+                ("total", false) => offers.OrderByDescending(o => o.Total),
+                ("issuedate", true) => offers.OrderBy(o => o.IssueDate),
+                ("issuedate", false) => offers.OrderByDescending(o => o.IssueDate),
+                (_, true) => offers.OrderBy(o => o.UpdatedAt),
+                _ => offers.OrderByDescending(o => o.UpdatedAt)
+            };
 
         var totalCount = await offers.CountAsync(cancellationToken);
         var items = await ordered
@@ -332,6 +344,8 @@ public class OfferService : IOfferService
             throw new ConflictException("An offer with this reference and version already exists.");
         }
 
+        _cache.Invalidate(CacheRegions.Offers);
+
         return await GetByIdAsync(offer.Id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after creation.");
     }
@@ -405,6 +419,8 @@ public class OfferService : IOfferService
             throw new ConflictException("The offer could not be updated.");
         }
 
+        _cache.Invalidate(CacheRegions.Offers);
+
         return await GetByIdAsync(id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after update.");
     }
@@ -457,6 +473,8 @@ public class OfferService : IOfferService
             throw new ConflictException("A new revision could not be created.");
         }
 
+        _cache.Invalidate(CacheRegions.Offers);
+
         return await GetByIdAsync(revisedOffer.Id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after revision.");
     }
@@ -505,6 +523,8 @@ public class OfferService : IOfferService
             throw new ConflictException(
                 "The offer was modified by another user. Refresh and try again.");
         }
+
+        _cache.Invalidate(CacheRegions.Offers);
 
         return await GetByIdAsync(id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after status update.");

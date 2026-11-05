@@ -33,8 +33,8 @@ returned (`latestOnly=true`).
 | `search` | – | Matches reference, customer name (English/Arabic) and customer code. |
 | `status` | – | `Draft`, `Issued`, `Accepted`, `Rejected`, `Cancelled`; case-insensitive. An unknown value returns `400` ProblemDetails. |
 | `latestOnly` | `true` | `false` returns every stored version. |
-| `sortBy` | `updatedAt` | `updatedAt`, `createdAt`, `reference`, `total`, `issueDate`. |
-| `sortDir` | `desc` | `asc` or `desc`. |
+| `sortBy` | `id` | `id` (the printed offer number: issue month, serial, version), `updatedAt`, `createdAt`, `reference`, `total`, `issueDate`. |
+| `sortDir` | `asc` for `id`, `desc` otherwise | `asc` or `desc`. |
 | `page` | `1` | |
 | `pageSize` | `20` | |
 

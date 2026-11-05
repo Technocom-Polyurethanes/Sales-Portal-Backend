@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -9,11 +10,19 @@ namespace sales_portal.core.Services;
 
 public class CustomerService : ICustomerService
 {
-    private readonly IRepository<Customer> _customers;
+    // The lookup list carries no offer data, so offers never invalidate it.
+    private static readonly string[] LookupRegions = [CacheRegions.Customers];
 
-    public CustomerService(IRepository<Customer> customers)
+    // The directory list shows offer counts and totals, so offer writes invalidate it too.
+    private static readonly string[] DirectoryRegions = [CacheRegions.Customers, CacheRegions.Offers];
+
+    private readonly IRepository<Customer> _customers;
+    private readonly IReferenceDataCache _cache;
+
+    public CustomerService(IRepository<Customer> customers, IReferenceDataCache? cache = null)
     {
         _customers = customers;
+        _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
     public async Task<PaginatedResultDto<CustomerLookupItemDto>> LookupAsync(
@@ -23,45 +32,24 @@ public class CustomerService : ICustomerService
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
-        var customers = BuildSearchQuery(query.Search);
-        var totalCount = await customers.CountAsync(cancellationToken);
-        var items = await customers
-            .OrderBy(c => c.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(c => new CustomerLookupItemDto
-            {
-                Id = c.Id,
-                CustomerCode = c.CustomerCode,
-                Name = c.Name,
-                NameAr = c.NameAr,
-                ContactPerson = c.ContactPerson,
-                ContactPersonAr = c.ContactPersonAr,
-                City = c.City,
-                CityAr = c.CityAr,
-                TaxId = c.TaxId,
-                DefaultCurrency = c.DefaultCurrency,
-                Email = c.Email,
-                Phone = c.Phone
-            })
-            .ToListAsync(cancellationToken);
+        var all = await LoadLookupListAsync();
+        var matches = InMemoryQuery.Search(
+            all,
+            query.Search,
+            c => c.CustomerCode,
+            c => c.Name,
+            c => c.NameAr);
 
-        return new PaginatedResultDto<CustomerLookupItemDto>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        };
+        return InMemoryQuery.Page(matches, page, pageSize);
     }
 
     public async Task<List<CustomerListItemDto>> GetAllAsync(
         string? search,
         CancellationToken cancellationToken)
     {
-        return await BuildListQuery(search)
-            .OrderBy(c => c.Name)
-            .ToListAsync(cancellationToken);
+        var all = await LoadDirectoryListAsync();
+        return InMemoryQuery.Search(all, search, c => c.CustomerCode, c => c.Name, c => c.NameAr)
+            .ToList();
     }
 
     public async Task<PaginatedResultDto<CustomerListItemDto>> GetPagedAsync(
@@ -73,21 +61,60 @@ public class CustomerService : ICustomerService
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
 
-        var query = BuildSearchQuery(search);
-        var totalCount = await query.CountAsync(cancellationToken);
-        var items = await BuildListQuery(search)
-            .OrderBy(c => c.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
+        var all = await LoadDirectoryListAsync();
+        var matches = InMemoryQuery.Search(
+            all,
+            search,
+            c => c.CustomerCode,
+            c => c.Name,
+            c => c.NameAr);
 
-        return new PaginatedResultDto<CustomerListItemDto>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        };
+        return InMemoryQuery.Page(matches, page, pageSize);
+    }
+
+    // Every customer, ordered by the customer code that is shown (never by the GUID).
+    private Task<IReadOnlyList<CustomerLookupItemDto>> LoadLookupListAsync()
+    {
+        return _cache.GetOrCreateAsync<IReadOnlyList<CustomerLookupItemDto>>(
+            "customers:lookup",
+            LookupRegions,
+            async () =>
+            {
+                var rows = await _customers.GetAll()
+                    .AsNoTracking()
+                    .Select(c => new CustomerLookupItemDto
+                    {
+                        Id = c.Id,
+                        CustomerCode = c.CustomerCode,
+                        Name = c.Name,
+                        NameAr = c.NameAr,
+                        ContactPerson = c.ContactPerson,
+                        ContactPersonAr = c.ContactPersonAr,
+                        City = c.City,
+                        CityAr = c.CityAr,
+                        TaxId = c.TaxId,
+                        DefaultCurrency = c.DefaultCurrency,
+                        Email = c.Email,
+                        Phone = c.Phone
+                    })
+                    .ToListAsync(CancellationToken.None);
+
+                rows.Sort((a, b) => NaturalStringComparer.Instance.Compare(a.CustomerCode, b.CustomerCode));
+                return rows;
+            });
+    }
+
+    private Task<IReadOnlyList<CustomerListItemDto>> LoadDirectoryListAsync()
+    {
+        return _cache.GetOrCreateAsync<IReadOnlyList<CustomerListItemDto>>(
+            "customers:directory",
+            DirectoryRegions,
+            async () =>
+            {
+                var rows = await BuildListQuery(null).ToListAsync(CancellationToken.None);
+                rows.Sort((a, b) => NaturalStringComparer.Instance.Compare(a.CustomerCode, b.CustomerCode));
+                return rows;
+            });
     }
 
     public async Task<PaginatedResultDto<OfferListItemDto>> GetOffersAsync(Guid id, int page, int pageSize, CancellationToken cancellationToken)
@@ -102,7 +129,7 @@ public class CustomerService : ICustomerService
 
         var totalCount = await offersQuery.CountAsync(cancellationToken);
         var items = await offersQuery
-            .OrderByDescending(o => o.CreatedAt)
+            .OrderByDisplayedId()
             .Skip((safePage - 1) * safePageSize)
             .Take(safePageSize)
             .Select(o => new OfferListItemDto
@@ -188,6 +215,7 @@ public class CustomerService : ICustomerService
 
         await _customers.AddAsync(customer);
         await _customers.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Customers);
 
         return await GetByIdWithHistoryAsync(customer.Id, cancellationToken)
             ?? throw new NotFoundException("Customer was not found after creation.");
@@ -235,6 +263,7 @@ public class CustomerService : ICustomerService
         customer.DefaultCurrency = string.IsNullOrWhiteSpace(dto.DefaultCurrency) ? "EGP" : dto.DefaultCurrency;
 
         await _customers.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Customers);
 
         return MapDetail(customer);
     }
@@ -288,8 +317,7 @@ public class CustomerService : ICustomerService
     private static CustomerDetailDto MapDetail(Customer customer)
     {
         var offers = customer.Offers
-            .OrderByDescending(o => o.IssueDate)
-            .ThenByDescending(o => o.Reference)
+            .OrderByDisplayedIdInMemory()
             .ToList();
 
         return new CustomerDetailDto
