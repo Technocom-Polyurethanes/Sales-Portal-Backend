@@ -6,7 +6,8 @@ internal enum ImportKind
 {
     Customers,
     Materials,
-    Prices
+    Prices,
+    BankAccounts
 }
 
 internal static class ImportKinds
@@ -18,8 +19,9 @@ internal static class ImportKinds
             "customers" => ImportKind.Customers,
             "materials" => ImportKind.Materials,
             "prices" => ImportKind.Prices,
+            "bank-accounts" => ImportKind.BankAccounts,
             _ => throw new ValidationException(
-                "Unknown import type. Use customers, materials or prices.")
+                "Unknown import type. Use customers, materials, prices or bank-accounts.")
         };
     }
 
@@ -27,6 +29,7 @@ internal static class ImportKinds
     {
         ImportKind.Customers => "customers",
         ImportKind.Materials => "materials",
+        ImportKind.BankAccounts => "bank-accounts",
         _ => "prices"
     };
 }

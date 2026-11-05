@@ -21,6 +21,7 @@ public class ImportService : IImportService
     private readonly IRepository<Material> _materials;
     private readonly IRepository<PaymentTerm> _paymentTerms;
     private readonly IRepository<User> _users;
+    private readonly IRepository<BankAccount> _bankAccounts;
     private readonly IReferenceDataCache _cache;
 
     public ImportService(
@@ -29,6 +30,7 @@ public class ImportService : IImportService
         IRepository<Material> materials,
         IRepository<PaymentTerm> paymentTerms,
         IRepository<User> users,
+        IRepository<BankAccount> bankAccounts,
         IReferenceDataCache? cache = null)
     {
         _batches = batches;
@@ -36,6 +38,7 @@ public class ImportService : IImportService
         _materials = materials;
         _paymentTerms = paymentTerms;
         _users = users;
+        _bankAccounts = bankAccounts;
         _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
@@ -101,7 +104,8 @@ public class ImportService : IImportService
         {
             Customers = await _customers.GetAll().AsNoTracking().ToListAsync(cancellationToken),
             Materials = await _materials.GetAll().AsNoTracking().ToListAsync(cancellationToken),
-            PaymentTerms = await _paymentTerms.GetAll().AsNoTracking().ToListAsync(cancellationToken)
+            PaymentTerms = await _paymentTerms.GetAll().AsNoTracking().ToListAsync(cancellationToken),
+            BankAccounts = await _bankAccounts.GetAll().AsNoTracking().ToListAsync(cancellationToken)
         };
 
         var rows = ImportRowBuilder.Build(kind, parsed, lookups);
@@ -154,6 +158,9 @@ public class ImportService : IImportService
         var materials = await _materials.GetAll()
             .Where(material => targetIds.Contains(material.Id))
             .ToDictionaryAsync(material => material.Id, cancellationToken);
+        var bankAccounts = await _bankAccounts.GetAll()
+            .Where(account => targetIds.Contains(account.Id))
+            .ToDictionaryAsync(account => account.Id, cancellationToken);
 
         var created = 0;
         var updated = 0;
@@ -178,6 +185,7 @@ public class ImportService : IImportService
             {
                 ImportKind.Customers => await ApplyCustomerAsync(row, customers),
                 ImportKind.Materials => await ApplyMaterialAsync(row, materials),
+                ImportKind.BankAccounts => await ApplyBankAccountAsync(row, bankAccounts),
                 _ => ApplyPrice(row, materials)
             };
 
@@ -212,7 +220,7 @@ public class ImportService : IImportService
                 "The import could not be saved because a code was changed by someone else. Preview the file again.");
         }
 
-        // A commit can change customers, materials and prices, so every list built from them is stale.
+        // A commit can change customers, materials, prices and bank accounts, so every list built from them is stale.
         _cache.Invalidate(CacheRegions.Customers, CacheRegions.Materials, CacheRegions.Catalog);
 
         return ResultOf(batch);
@@ -347,6 +355,45 @@ public class ImportService : IImportService
         return true;
     }
 
+    private async Task<bool> ApplyBankAccountAsync(
+        StoredImportRow row,
+        Dictionary<Guid, BankAccount> bankAccounts)
+    {
+        BankAccount account;
+        if (row.TargetId is { } id && bankAccounts.TryGetValue(id, out var existing))
+        {
+            account = existing;
+        }
+        else if (row.TargetId == null)
+        {
+            account = new BankAccount();
+            await _bankAccounts.AddAsync(account);
+        }
+        else
+        {
+            return false;
+        }
+
+        account.Bank = Value(row, "bank") ?? account.Bank;
+        account.BankAr = Value(row, "bankAr") ?? account.BankAr;
+        account.Branch = Value(row, "branch") ?? account.Branch;
+        account.BranchAr = Value(row, "branchAr") ?? account.BranchAr;
+        account.AccountHolderName = Value(row, "accountHolderName") ?? account.AccountHolderName ?? string.Empty;
+        account.AccountHolderNameAr = Value(row, "accountHolderNameAr") ?? account.AccountHolderNameAr;
+        account.AccountNumber = Value(row, "accountNumber") ?? account.AccountNumber;
+        account.Swift = Value(row, "swift") ?? account.Swift ?? string.Empty;
+        account.Iban = Value(row, "iban") ?? account.Iban ?? string.Empty;
+        account.Currency = Value(row, "currency") ?? account.Currency;
+        account.SortOrder = ToInt(Value(row, "sortOrder")) ?? account.SortOrder;
+
+        if (Value(row, "isActive") is { } active)
+        {
+            account.IsActive = string.Equals(active, "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return true;
+    }
+
     private static bool ApplyPrice(
         StoredImportRow row,
         Dictionary<Guid, Material> materials)
@@ -370,6 +417,11 @@ public class ImportService : IImportService
 
     private static decimal? ToDecimal(string? text)
         => decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
+
+    private static int? ToInt(string? text)
+        => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
 
