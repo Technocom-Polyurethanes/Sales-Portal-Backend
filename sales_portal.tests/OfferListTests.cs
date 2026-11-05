@@ -55,7 +55,8 @@ public class OfferListTests
         TestFactory.AddOffer(db.Context, basics, "101/OCT./YL/AA", version: 1);
 
         var service = TestFactory.CreateOfferService(db.Context);
-        var before = await service.GetListAsync(new OfferQueryParamsDto(), CancellationToken.None);
+        var byUpdatedAt = new OfferQueryParamsDto { SortBy = "updatedAt" };
+        var before = await service.GetListAsync(byUpdatedAt, CancellationToken.None);
         Assert.Equal(2, before.Items.Count);
 
         await service.UpdateStatusAsync(
@@ -64,7 +65,7 @@ public class OfferListTests
             basics.SecondUser.Id,
             CancellationToken.None);
 
-        var after = await service.GetListAsync(new OfferQueryParamsDto(), CancellationToken.None);
+        var after = await service.GetListAsync(byUpdatedAt, CancellationToken.None);
         Assert.Equal(older.Id, after.Items[0].Id);
         Assert.Equal(basics.SecondUser.FullName, after.Items[0].LastModifiedByName);
         Assert.True(after.Items[0].LastModifiedAt >= after.Items[1].LastModifiedAt);

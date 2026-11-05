@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -20,19 +21,22 @@ public class ImportService : IImportService
     private readonly IRepository<Material> _materials;
     private readonly IRepository<PaymentTerm> _paymentTerms;
     private readonly IRepository<User> _users;
+    private readonly IReferenceDataCache _cache;
 
     public ImportService(
         IRepository<ImportBatch> batches,
         IRepository<Customer> customers,
         IRepository<Material> materials,
         IRepository<PaymentTerm> paymentTerms,
-        IRepository<User> users)
+        IRepository<User> users,
+        IReferenceDataCache? cache = null)
     {
         _batches = batches;
         _customers = customers;
         _materials = materials;
         _paymentTerms = paymentTerms;
         _users = users;
+        _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
     public Task<ImportTemplateDto> GetTemplateAsync(
@@ -207,6 +211,9 @@ public class ImportService : IImportService
             throw new ConflictException(
                 "The import could not be saved because a code was changed by someone else. Preview the file again.");
         }
+
+        // A commit can change customers, materials and prices, so every list built from them is stale.
+        _cache.Invalidate(CacheRegions.Customers, CacheRegions.Materials, CacheRegions.Catalog);
 
         return ResultOf(batch);
     }

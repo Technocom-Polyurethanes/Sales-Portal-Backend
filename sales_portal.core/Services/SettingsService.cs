@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -12,15 +13,18 @@ public class SettingsService : ISettingsService
     private readonly IRepository<CompanySettings> _companySettings;
     private readonly IRepository<WorkspaceSettings> _workspaceSettings;
     private readonly IRepository<BankAccount> _bankAccounts;
+    private readonly IReferenceDataCache _cache;
 
     public SettingsService(
         IRepository<CompanySettings> companySettings,
         IRepository<WorkspaceSettings> workspaceSettings,
-        IRepository<BankAccount> bankAccounts)
+        IRepository<BankAccount> bankAccounts,
+        IReferenceDataCache? cache = null)
     {
         _companySettings = companySettings;
         _workspaceSettings = workspaceSettings;
         _bankAccounts = bankAccounts;
+        _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
     public async Task<SettingsDto> GetAsync(CancellationToken cancellationToken)
@@ -84,6 +88,7 @@ public class SettingsService : ISettingsService
         }
 
         await _companySettings.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Catalog);
 
         return await GetAsync(cancellationToken);
     }

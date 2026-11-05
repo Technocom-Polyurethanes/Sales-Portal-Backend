@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using sales_portal.api.Middleware;
+using sales_portal.core.Caching;
 using sales_portal.core.Configuration;
 using sales_portal.core.IService;
 using sales_portal.core.Services;
@@ -71,6 +72,10 @@ builder.Services
     });
 
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+
+// Reference data (customers, materials, catalog) is read on every offer and rarely written.
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();

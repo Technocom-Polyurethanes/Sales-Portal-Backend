@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 using sales_portal.domain.Interfaces;
@@ -8,6 +9,12 @@ namespace sales_portal.core.Services;
 
 public class CatalogService : ICatalogService
 {
+    private static readonly string[] BootstrapRegions = [CacheRegions.Catalog];
+
+    // The offer catalog also holds every material, so material writes drop it as well.
+    private static readonly string[] OfferSnapshotRegions = [CacheRegions.Catalog, CacheRegions.Materials];
+
+    private readonly IReferenceDataCache _cache;
     private readonly IRepository<PaymentTerm> _paymentTerms;
     private readonly IRepository<PackageType> _packageTypes;
     private readonly IRepository<BankAccount> _bankAccounts;
@@ -25,8 +32,10 @@ public class CatalogService : ICatalogService
         IRepository<WorkspaceSettings> workspaceSettings,
         IRepository<Customer> customers,
         IRepository<User> users,
-        IRepository<Material> materials)
+        IRepository<Material> materials,
+        IReferenceDataCache? cache = null)
     {
+        _cache = cache ?? NoReferenceDataCache.Instance;
         _paymentTerms = paymentTerms;
         _packageTypes = packageTypes;
         _bankAccounts = bankAccounts;
@@ -37,7 +46,15 @@ public class CatalogService : ICatalogService
         _materials = materials;
     }
 
-    public async Task<CatalogBootstrapDto> GetBootstrapAsync(CancellationToken cancellationToken)
+    public Task<CatalogBootstrapDto> GetBootstrapAsync(CancellationToken cancellationToken)
+    {
+        return _cache.GetOrCreateAsync(
+            "catalog:bootstrap",
+            BootstrapRegions,
+            () => LoadBootstrapAsync(CancellationToken.None));
+    }
+
+    private async Task<CatalogBootstrapDto> LoadBootstrapAsync(CancellationToken cancellationToken)
     {
         var paymentTerms = await _paymentTerms.GetAll()
             .AsNoTracking()
@@ -125,6 +142,28 @@ public class CatalogService : ICatalogService
                 .FirstOrDefaultAsync(u => u.Id == createdByUserId.Value, cancellationToken)
             : null;
 
+        // Everything below changes rarely and is read on every calculation, so it is loaded once
+        // and shared. The entities are read-only here: nothing attaches them to a DbContext.
+        var snapshot = await _cache.GetOrCreateAsync(
+            "catalog:offer-snapshot",
+            OfferSnapshotRegions,
+            () => LoadOfferSnapshotAsync(CancellationToken.None));
+
+        return new OfferCatalog
+        {
+            Customer = customer,
+            CreatedBy = createdBy,
+            Materials = snapshot.Materials,
+            PackageTypes = snapshot.PackageTypes,
+            PaymentTerms = snapshot.PaymentTerms,
+            BankAccounts = snapshot.BankAccounts,
+            CompanySettings = snapshot.CompanySettings,
+            WorkspaceSettings = snapshot.WorkspaceSettings
+        };
+    }
+
+    private async Task<OfferCatalogSnapshot> LoadOfferSnapshotAsync(CancellationToken cancellationToken)
+    {
         var materials = await _materials.GetAll()
             .AsNoTracking()
             .ToListAsync(cancellationToken);
@@ -151,18 +190,22 @@ public class CatalogService : ICatalogService
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
 
-        return new OfferCatalog
-        {
-            Customer = customer,
-            CreatedBy = createdBy,
-            Materials = materials,
-            PackageTypes = packageTypes,
-            PaymentTerms = paymentTerms,
-            BankAccounts = bankAccounts,
-            CompanySettings = companySettings,
-            WorkspaceSettings = workspaceSettings
-        };
+        return new OfferCatalogSnapshot(
+            materials,
+            packageTypes,
+            paymentTerms,
+            bankAccounts,
+            companySettings,
+            workspaceSettings);
     }
+
+    private sealed record OfferCatalogSnapshot(
+        IReadOnlyList<Material> Materials,
+        IReadOnlyList<PackageType> PackageTypes,
+        IReadOnlyList<PaymentTerm> PaymentTerms,
+        IReadOnlyList<BankAccount> BankAccounts,
+        CompanySettings? CompanySettings,
+        WorkspaceSettings? WorkspaceSettings);
 
     private static CompanySettingsDto MapCompany(CompanySettings company)
     {

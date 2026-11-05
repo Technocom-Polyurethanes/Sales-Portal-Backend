@@ -12,11 +12,17 @@ public class OfferQueryParamsDto
     /// </summary>
     public bool LatestOnly { get; set; } = true;
 
-    /// <summary>updatedAt (default), createdAt, reference, total or issueDate.</summary>
-    public string SortBy { get; set; } = "updatedAt";
+    /// <summary>
+    /// id (default, the offer number: issue month, serial, version), updatedAt, createdAt,
+    /// reference, total or issueDate.
+    /// </summary>
+    public string SortBy { get; set; } = "id";
 
-    /// <summary>desc (default) or asc.</summary>
-    public string SortDir { get; set; } = "desc";
+    /// <summary>
+    /// asc or desc. When omitted the offer number sorts ascending and every other column sorts
+    /// descending.
+    /// </summary>
+    public string? SortDir { get; set; }
 
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
