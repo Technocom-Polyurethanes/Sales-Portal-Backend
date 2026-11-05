@@ -91,7 +91,7 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // October reference with a November issue date and no lines.
+            // No lines: issuing must fail on that alone.
             id = TestFactory.AddOffer(
                 db,
                 new SeededBasics(seed.User, seed.User, seed.Customer, seed.PaymentTerm),
@@ -105,7 +105,6 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         var problem = await ReadJsonAsync(response);
         var detail = problem.GetProperty("detail").GetString();
-        Assert.Contains("does not match the issue date month (NOV.)", detail);
         Assert.Contains("At least one line is required", detail);
         Assert.Equal(JsonValueKind.Array, problem.GetProperty("errors").ValueKind);
 
@@ -249,7 +248,7 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
             await db.PackageTypes.AsNoTracking().FirstAsync(p => p.Name == "Drum"));
     }
 
-    private static string NextReference() => $"{Interlocked.Increment(ref _sequence)}/OCT./YL/TU";
+    private static string NextReference() => $"Loc/{Interlocked.Increment(ref _sequence)}/YL/TU";
 
     private static Dictionary<string, object?> BuildPayload(Seed seed, string reference)
         => BuildPayload(seed, reference, out _, out _);
@@ -268,6 +267,7 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         return new Dictionary<string, object?>
         {
             ["reference"] = reference,
+            ["offerType"] = "Loc",
             ["version"] = 1,
             ["customerId"] = seed.Customer.Id,
             ["attention"] = "Nader William",
@@ -475,7 +475,8 @@ public class OfferIdRelinkTests
             params (Guid LineId, Material Material, (Guid PackagingId, int Packages)[] Packaging)[] lines)
             => new()
             {
-                Reference = "100/OCT./YL/AA",
+                Reference = "Loc/100/YL/AA",
+                OfferType = OfferType.Loc,
                 IssueDate = new DateOnly(2026, 10, 21),
                 CustomerId = Guid.NewGuid(),
                 PaymentTermId = Term.Id,

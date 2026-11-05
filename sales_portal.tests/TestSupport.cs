@@ -126,11 +126,13 @@ internal static class TestFactory
         OfferStatus status = OfferStatus.Draft,
         DateOnly? issueDate = null,
         Guid? updatedByUserId = null,
-        int? serialNumber = null)
+        int? serialNumber = null,
+        OfferType offerType = OfferType.Loc)
     {
         var offer = new Offer
         {
             Reference = reference,
+            OfferType = offerType,
             SerialNumber = serialNumber ?? version,
             Version = version,
             CustomerId = basics.Customer.Id,

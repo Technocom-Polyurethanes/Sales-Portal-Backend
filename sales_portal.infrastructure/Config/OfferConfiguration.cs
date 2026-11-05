@@ -14,6 +14,12 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
             .IsRequired()
             .HasMaxLength(100);
 
+        // Stored as "Loc" / "Int", the same values the API uses.
+        builder.Property(o => o.OfferType)
+            .HasConversion<string>()
+            .HasMaxLength(3)
+            .IsRequired();
+
         // The reference may change between versions, so a version is identified by its chain.
         builder.HasIndex(o => new { o.RootOfferId, o.Version })
             .IsUnique();

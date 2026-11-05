@@ -166,10 +166,10 @@ public class ReferenceDataTests
     {
         using var db = new TestDatabase();
         var basics = TestFactory.SeedBasics(db.Context);
-        // The serial restarts every month, so November 5 comes after October 12 although 5 < 12.
-        TestFactory.AddOffer(db.Context, basics, "5/NOV./YL/AA", issueDate: new DateOnly(2026, 11, 3), serialNumber: 5);
-        TestFactory.AddOffer(db.Context, basics, "12/OCT./YL/AA", issueDate: new DateOnly(2026, 10, 4), serialNumber: 12);
-        TestFactory.AddOffer(db.Context, basics, "3/OCT./YL/AA", issueDate: new DateOnly(2026, 10, 20), serialNumber: 3);
+        // Ordering groups by issue month before serial, so November 5 comes after October 12.
+        TestFactory.AddOffer(db.Context, basics, "Loc/5/YL/AA", issueDate: new DateOnly(2026, 11, 3), serialNumber: 5);
+        TestFactory.AddOffer(db.Context, basics, "Loc/12/YL/AA", issueDate: new DateOnly(2026, 10, 4), serialNumber: 12);
+        TestFactory.AddOffer(db.Context, basics, "Loc/3/YL/AA", issueDate: new DateOnly(2026, 10, 20), serialNumber: 3);
         var service = TestFactory.CreateOfferService(db.Context);
 
         var ascending = await service.GetListAsync(new OfferQueryParamsDto(), CancellationToken.None);
@@ -178,10 +178,10 @@ public class ReferenceDataTests
             CancellationToken.None);
 
         Assert.Equal(
-            new[] { "3/OCT./YL/AA", "12/OCT./YL/AA", "5/NOV./YL/AA" },
+            new[] { "Loc/3/YL/AA", "Loc/12/YL/AA", "Loc/5/YL/AA" },
             ascending.Items.Select(offer => offer.Reference));
         Assert.Equal(
-            new[] { "5/NOV./YL/AA", "12/OCT./YL/AA", "3/OCT./YL/AA" },
+            new[] { "Loc/5/YL/AA", "Loc/12/YL/AA", "Loc/3/YL/AA" },
             descending.Items.Select(offer => offer.Reference));
     }
 }

@@ -2,7 +2,9 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.core.DTOs;
+using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.domain.Enums;
 
 namespace sales_portal.api.Controllers;
 
@@ -37,14 +39,15 @@ public class OffersController : ControllerBase
 
     [HttpGet("next-sequence")]
     public async Task<ActionResult<OfferNextSequenceDto>> GetNextSequence(
-        [FromQuery] int? year,
-        [FromQuery] int? month,
+        [FromQuery] OfferType? offerType,
         CancellationToken cancellationToken)
     {
-        var targetYear = year ?? DateTime.UtcNow.Year;
-        var targetMonth = month ?? DateTime.UtcNow.Month;
-        var userId = CurrentUserId();
-        return Ok(await _offerService.GetNextSequenceAsync(targetYear, targetMonth, userId, cancellationToken));
+        if (offerType == null)
+        {
+            throw new ValidationException("Offer type is required.");
+        }
+
+        return Ok(await _offerService.GetNextSequenceAsync(offerType.Value, CurrentUserId(), cancellationToken));
     }
 
     [HttpGet("{id:guid}/versions")]

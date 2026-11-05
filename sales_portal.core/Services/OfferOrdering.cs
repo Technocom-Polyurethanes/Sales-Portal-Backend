@@ -3,9 +3,8 @@ using sales_portal.domain.Models;
 namespace sales_portal.core.Services;
 
 /// <summary>
-/// Orders offers by the number printed on them (issue year and month, then serial number, then
-/// version) and never by the internal GUID. The reference restarts its sequence every month, so
-/// the month has to come before the serial number.
+/// Orders offers by the date they were issued, then by serial number and version,
+/// and never by the internal GUID.
 /// </summary>
 public static class OfferOrdering
 {

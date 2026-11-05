@@ -2,7 +2,7 @@ namespace sales_portal.core.DTOs;
 
 /// <summary>
 /// Suggestion for the next offer reference. The reference is still typed manually by
-/// the user; this only proposes the next sequence for the requested month.
+/// the user; this proposes the next global sequence for the selected offer type.
 /// </summary>
 public class OfferNextSequenceDto
 {

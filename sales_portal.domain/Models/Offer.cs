@@ -9,7 +9,8 @@ namespace sales_portal.domain.Models
 {
     public class Offer : BaseEntity
     {
-        public string Reference { get; set; } = default!;          // typed manually by user: 3090/OCT./YL/AA
+        public string Reference { get; set; } = default!;          // Loc/42/YL/JD or Int/43/YL/JD
+        public OfferType OfferType { get; set; } = OfferType.Loc;
         public int SerialNumber { get; set; }
         public int Version { get; set; } = 1;
         /// <summary>Stable id shared by every version of an offer, so the reference may change between versions.</summary>
