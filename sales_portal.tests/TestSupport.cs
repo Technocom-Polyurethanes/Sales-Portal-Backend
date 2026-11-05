@@ -66,7 +66,8 @@ internal static class TestFactory
             new Repository<Customer>(context),
             new Repository<Material>(context),
             new Repository<PaymentTerm>(context),
-            new Repository<User>(context));
+            new Repository<User>(context),
+            new Repository<BankAccount>(context));
 
     public static SettingsService CreateSettingsService(AppDbContext context)
         => new(
@@ -177,6 +178,9 @@ internal static class ImportTestFiles
         "itemCode,erpNextItemCode,name,category,referencePricePerKg,uom,isActive,defaultWeightKg";
 
     public const string PriceHeader = "itemCode,referencePricePerKg";
+
+    public const string BankAccountHeader =
+        "bank,bankAr,branch,branchAr,accountHolderName,accountHolderNameAr,accountNumber,swift,iban,currency,isActive,sortOrder";
 
     public static Task<sales_portal.core.DTOs.ImportPreviewDto> PreviewAsync(
         AppDbContext context,

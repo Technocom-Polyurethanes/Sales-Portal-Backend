@@ -10,6 +10,7 @@ internal sealed class ImportLookups
     public List<Customer> Customers { get; init; } = new();
     public List<Material> Materials { get; init; } = new();
     public List<PaymentTerm> PaymentTerms { get; init; } = new();
+    public List<BankAccount> BankAccounts { get; init; } = new();
 }
 
 /// <summary>
@@ -51,6 +52,9 @@ internal static class ImportRowBuilder
                     break;
                 case ImportKind.Materials:
                     BuildMaterial(row, lookups, seenCodes);
+                    break;
+                case ImportKind.BankAccounts:
+                    BuildBankAccount(row, lookups, seenCodes, rows.Count + 1);
                     break;
                 default:
                     BuildPrice(row, lookups, seenCodes);
@@ -219,6 +223,106 @@ internal static class ImportRowBuilder
         }
     }
 
+    private static void BuildBankAccount(
+        StoredImportRow row,
+        ImportLookups lookups,
+        HashSet<string> seenCodes,
+        int position)
+    {
+        var values = row.Values;
+        var accountNumber = values["accountNumber"]?.Trim();
+
+        if (values["bank"] == null) row.Errors.Add("Bank is required.");
+        if (values["branch"] == null) row.Errors.Add("Branch is required.");
+
+        if (accountNumber == null)
+        {
+            row.Errors.Add("Account number is required.");
+        }
+        else
+        {
+            values["accountNumber"] = accountNumber;
+            if (!seenCodes.Add(accountNumber))
+            {
+                row.Errors.Add($"Duplicate account number '{accountNumber}' in this file.");
+            }
+        }
+
+        var match = accountNumber == null
+            ? null
+            : FindBankAccount(lookups, accountNumber);
+        row.TargetId = match?.Id;
+
+        if (accountNumber != null && match == null &&
+            lookups.BankAccounts.Count(account =>
+                string.Equals(account.AccountNumber.Trim(), accountNumber, StringComparison.OrdinalIgnoreCase)) > 1)
+        {
+            row.Errors.Add(
+                $"Account number '{accountNumber}' is ambiguous: more than one bank account already uses it.");
+        }
+
+        if (values["currency"] is { } currency)
+        {
+            values["currency"] = currency.Trim().ToUpperInvariant();
+        }
+        else if (match == null)
+        {
+            values["currency"] = "EGP";
+        }
+
+        if (values["isActive"] is { } active)
+        {
+            var parsed = ParseBool(active);
+            if (parsed == null)
+            {
+                row.Errors.Add("Is active must be true or false.");
+            }
+            else
+            {
+                values["isActive"] = parsed.Value ? "true" : "false";
+            }
+        }
+        else if (match == null)
+        {
+            values["isActive"] = "true";
+        }
+
+        if (values["sortOrder"] is { } sortOrder)
+        {
+            if (!int.TryParse(sortOrder, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                row.Errors.Add("Sort order must be a whole number.");
+            }
+        }
+        else if (match == null)
+        {
+            var maxSortOrder = lookups.BankAccounts.Count == 0
+                ? 0
+                : lookups.BankAccounts.Max(account => account.SortOrder);
+            values["sortOrder"] = (maxSortOrder + position).ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (match != null)
+        {
+            // Keep the stored spelling so a case-only difference is not reported as a change.
+            values["accountNumber"] = match.AccountNumber;
+            row.Existing = BankAccountSnapshot(match);
+            AddChanges(row);
+        }
+    }
+
+    private static BankAccount? FindBankAccount(ImportLookups lookups, string accountNumber)
+    {
+        var matches = lookups.BankAccounts
+            .Where(account => string.Equals(
+                account.AccountNumber.Trim(),
+                accountNumber,
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
     private static void BuildPrice(
         StoredImportRow row,
         ImportLookups lookups,
@@ -332,6 +436,23 @@ internal static class ImportRowBuilder
             ["uom"] = material.Uom,
             ["isActive"] = material.IsActive ? "true" : "false",
             ["defaultWeightKg"] = FormatDecimal(material.DefaultWeightKg)
+        };
+
+    private static Dictionary<string, string?> BankAccountSnapshot(BankAccount account) =>
+        new(StringComparer.Ordinal)
+        {
+            ["bank"] = account.Bank,
+            ["bankAr"] = account.BankAr,
+            ["branch"] = account.Branch,
+            ["branchAr"] = account.BranchAr,
+            ["accountHolderName"] = account.AccountHolderName,
+            ["accountHolderNameAr"] = account.AccountHolderNameAr,
+            ["accountNumber"] = account.AccountNumber,
+            ["swift"] = account.Swift,
+            ["iban"] = account.Iban,
+            ["currency"] = account.Currency,
+            ["isActive"] = account.IsActive ? "true" : "false",
+            ["sortOrder"] = account.SortOrder.ToString(CultureInfo.InvariantCulture)
         };
 
     /// <summary>

@@ -29,6 +29,11 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
             .HasColumnType("jsonb")
             .IsRequired();
 
+        // Per-offer bank selection. Deliberately no foreign key: accounts may be deleted later.
+        builder.Property(o => o.BankAccountIds)
+            .HasColumnType("uuid[]")
+            .HasColumnName("bank_account_ids");
+
         // High precision decimal formatting for currency and tax fields
         builder.Property(o => o.Subtotal).HasColumnType("decimal(18,2)");
         builder.Property(o => o.OrderDiscount).HasColumnType("decimal(18,2)");

@@ -185,8 +185,9 @@ user's initials. It is only a suggestion; the user still types the reference.
 
 ### Offer create / update
 
-`POST /api/offers` and `PUT /api/offers/{id}` accept the offer draft. The only new
-request fields are `attentionAr` and the Arabic customer/bank fields described below.
+`POST /api/offers` and `PUT /api/offers/{id}` accept the offer draft. Request fields
+include `attentionAr`, `bankAccountIds` and the Arabic customer/bank fields described
+below.
 
 ```json
 {
@@ -286,7 +287,35 @@ When a Draft is issued it is validated again with the same checks as create/upda
 (reference format and month, customer, payment term, materials, packaging and
 delivery allocations) plus **at least one line**. Failures return the `400` shown above
 and the offer stays a Draft. Drafts without lines can still be saved; only issuing
-requires a line. A `reference` used by another offer, or a duplicate version in the same chain, returns `409`.
+requires a line. A `reference` used by another offer, or a duplicate version in the same
+chain, returns `409`.
+
+### Bank accounts on an offer
+
+The offer draft (`POST /api/offers`, `PUT /api/offers/{id}`, calculate and revise) and
+the offer detail accept `bankAccountIds`:
+
+```json
+{
+  "bankAccountIds": [
+    "b5c48d67-30f4-4ebf-88f5-7d8d9aef0c11",
+    "c6d48d67-30f4-4ebf-88f5-7d8d9aef0c12"
+  ]
+}
+```
+
+- `null` or omitted selects every active account at save time. The resolved list is
+  stored, so a later Settings change does not silently change this offer.
+- `[]` returns `400` ("Select at least one bank account.").
+- An unknown or inactive id returns `400` ("Bank account … was not found or is
+  inactive.").
+- The selection is stored as `bank_account_ids` (PostgreSQL `uuid[]`) with **no foreign
+  key**: deleting an account in Settings never fails because an offer used it.
+- The snapshot and printed document list only the selected accounts, ordered by
+  `sortOrder`.
+- `POST /api/offers/{id}/revise` copies the selection from the source version.
+- Offers created before this feature have `bankAccountIds: null` and keep printing all
+  active accounts, matching their existing snapshot.
 
 ## Customers
 
@@ -495,13 +524,14 @@ templates never render blank bill-to or bank details. English fields are unchang
 
 ## Data import
 
-Three import types move spreadsheet data into the workspace:
+Four import types move spreadsheet data into the workspace:
 
 | Type | Route segment | Updates |
 | --- | --- | --- |
 | Customers | `customers` | `Customer` upsert |
 | Materials & products | `materials` | `Material` upsert |
 | Price list | `prices` | `Material.ReferencePricePerKg` |
+| Bank accounts | `bank-accounts` | `BankAccount` upsert |
 
 The flow is three calls: download a template, preview a file, commit the preview.
 The parsed preview is stored on the server; the commit never trusts client rows.
@@ -517,6 +547,7 @@ the exact template of that type. `Content-Disposition` names it
 | `customers` | `customerCode, erpNextId, name, nameAr, taxId, contactPerson, contactPersonAr, email, phone, city, cityAr, address, addressAr, defaultPaymentTerm, defaultCurrency` |
 | `materials` | `itemCode, erpNextItemCode, name, category, referencePricePerKg, uom, isActive, defaultWeightKg` |
 | `prices` | `itemCode, referencePricePerKg` |
+| `bank-accounts` | `bank, bankAr, branch, branchAr, accountHolderName, accountHolderNameAr, accountNumber, swift, iban, currency, isActive, sortOrder` |
 
 Header matching is case-insensitive and trimmed. Unknown columns are ignored.
 
@@ -583,13 +614,21 @@ Validation rules:
   new materials.
 - Price rows need a material that already exists (`itemCode`, falling back to
   `erpNextItemCode`) and update only `ReferencePricePerKg`.
+- Bank accounts are matched by `accountNumber`, trimmed and case-insensitive. `bank`,
+  `branch` and `accountNumber` are required on every row. A number repeated inside the
+  file is an error on the later row; if the database already holds several accounts with
+  the same number the row is an error ("ambiguous") rather than guessing. `currency`
+  defaults to `EGP`, `isActive` to `true` and an empty `sortOrder` to the highest
+  existing order plus the row position in the file (new rows only).
 
 ### `POST /api/import/{importId}/commit` (Admin)
 
 Applies every row that is not an error in one transaction. Records are upserted by
-`CustomerCode` / `ItemCode`, falling back to `ErpNextId` / `ErpNextItemCode`.
-Empty cells leave the stored value unchanged. The call is idempotent: committing
-the same `importId` again returns the stored result and writes nothing.
+`CustomerCode` / `ItemCode`, falling back to `ErpNextId` / `ErpNextItemCode`; bank
+accounts are upserted by `AccountNumber`. Empty cells leave the stored value unchanged.
+The call is idempotent: committing the same `importId` again returns the stored result
+and writes nothing. Committing bank accounts invalidates the cached catalog, so the next
+offer calculation and bootstrap see the new list. Imports never delete records.
 
 ```json
 {
@@ -649,6 +688,11 @@ The paged commit log, newest first. Only committed imports are listed.
   month rules as offer validation.
 - Data import: new `/api/import/templates/{type}`, `/api/import/{type}/preview`,
   `/api/import/{importId}/commit` and `/api/import/history` routes; new
-  `import_batches` table.
+  `import_batches` table. Import types: `customers`, `materials`, `prices` and
+  `bank-accounts`.
+- Bank account import: `bank-accounts` type with template, preview and commit, upserted
+  by `accountNumber`.
+- Offer detail and draft: new `bankAccountIds` (`Guid[] | null`) and `bank_account_ids`
+  column on `offers`; the printed document lists only the selected accounts.
 
 Nothing was removed, renamed or made required that was previously optional.

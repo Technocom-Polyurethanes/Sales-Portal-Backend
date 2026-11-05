@@ -21,10 +21,17 @@ internal static class ImportTemplates
 
     public static readonly string[] Prices = ["itemCode", "referencePricePerKg"];
 
+    public static readonly string[] BankAccounts =
+    [
+        "bank", "bankAr", "branch", "branchAr", "accountHolderName", "accountHolderNameAr",
+        "accountNumber", "swift", "iban", "currency", "isActive", "sortOrder"
+    ];
+
     public static string[] Columns(this ImportKind kind) => kind switch
     {
         ImportKind.Customers => Customers,
         ImportKind.Materials => Materials,
+        ImportKind.BankAccounts => BankAccounts,
         _ => Prices
     };
 
