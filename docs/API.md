@@ -388,6 +388,51 @@ Create/update request:
 
 Arabic values are optional. Existing English fields keep their previous meaning.
 
+## Banks
+
+### `GET /api/banks`
+
+Paged bank directory, ordered by `sortOrder` then bank name. Cached in the `catalog`
+region until a bank, settings or import write invalidates it.
+
+Query: `search` (bank, branch or account number), `currency`, `isActive`, `page`
+(default 1), `pageSize` (default 20, max 200).
+
+```json
+{
+  "items": [
+    {
+      "id": "b1a3f0b8-3c2e-4fe2-8f4e-7a2f0f6b9c21",
+      "bank": "QNB",
+      "bankAr": "بنك قطر الوطني",
+      "branch": "Badr City",
+      "branchAr": "مدينة بدر",
+      "accountHolderName": "Technocom for Commercial Agencies",
+      "accountHolderNameAr": "شركة تكنوكوم للتوكيلات التجارية",
+      "accountNumber": "20319811443",
+      "swift": "QNBAEGCXXXX",
+      "iban": "EG100037015208182031981144393",
+      "currency": "EGP",
+      "sortOrder": 1,
+      "isActive": true
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 1,
+  "totalPages": 1
+}
+```
+
+`GET /api/banks/{id}` returns the same shape or `404`.
+
+### `POST /api/banks` and `PUT /api/banks/{id}` (Admin)
+
+Accept the account fields without `id`. `bank`, `branch` and `accountNumber` are
+required. A missing or zero `sortOrder` is appended to the end of the list. There is
+no delete endpoint on purpose: offers store bank ids without a foreign key, so an
+unused account is deactivated with `isActive: false` instead.
+
 ## Settings and bank accounts
 
 ### `GET /api/settings`
