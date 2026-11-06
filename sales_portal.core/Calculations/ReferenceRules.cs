@@ -27,6 +27,40 @@ public static class ReferenceRules
     public static bool IsValid(string? reference)
         => !string.IsNullOrWhiteSpace(reference) && ReferenceRegex.IsMatch(reference.Trim());
 
+    /// <summary>Splits a new-format reference into its type, sequence and initials.</summary>
+    public static bool TryParse(string? reference, out OfferType type, out int sequence, out string initials)
+    {
+        type = OfferType.Loc;
+        sequence = 0;
+        initials = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return false;
+        }
+
+        var match = ReferenceRegex.Match(reference.Trim());
+        if (!match.Success || !int.TryParse(match.Groups["sequence"].Value, out sequence))
+        {
+            return false;
+        }
+
+        type = string.Equals(match.Groups["type"].Value, nameof(OfferType.Int), StringComparison.OrdinalIgnoreCase)
+            ? OfferType.Int
+            : OfferType.Loc;
+        initials = match.Groups["initials"].Value.ToUpperInvariant();
+        return true;
+    }
+
+    /// <summary>
+    /// Rewrites the type segment of a new-format reference and keeps its sequence and initials,
+    /// so changing the offer type never changes the number.
+    /// </summary>
+    public static string WithType(string reference, OfferType type)
+        => TryParse(reference, out _, out var sequence, out var initials)
+            ? Build(type, sequence, initials)
+            : reference;
+
     /// <summary>
     /// Reads the sequence from a new-format reference. Legacy references such as
     /// <c>3089/OCT./YL/AA</c> fall back to their first numeric segment so the next

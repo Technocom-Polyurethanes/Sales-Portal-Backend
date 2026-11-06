@@ -21,6 +21,24 @@ public class ReferenceRulesTests
     }
 
     [Fact]
+    public void TryParse_splits_type_sequence_and_initials()
+    {
+        Assert.True(ReferenceRules.TryParse("Int/43/YL/jd", out var type, out var sequence, out var initials));
+        Assert.Equal(OfferType.Int, type);
+        Assert.Equal(43, sequence);
+        Assert.Equal("JD", initials);
+        Assert.False(ReferenceRules.TryParse("3089/OCT./YL/AA", out _, out _, out _));
+        Assert.False(ReferenceRules.TryParse(null, out _, out _, out _));
+    }
+
+    [Fact]
+    public void WithType_changes_only_the_type_segment()
+    {
+        Assert.Equal("Int/42/YL/JD", ReferenceRules.WithType("Loc/42/YL/JD", OfferType.Int));
+        Assert.Equal("Loc/42/YL/JD", ReferenceRules.WithType("Int/42/YL/JD", OfferType.Loc));
+    }
+
+    [Fact]
     public void Reference_type_must_match_the_offer_type()
     {
         Assert.Equal(

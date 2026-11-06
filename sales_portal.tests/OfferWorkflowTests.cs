@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.Services;
 using sales_portal.domain.Enums;
@@ -139,19 +140,69 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
     }
 
     [Fact]
-    public async Task A_new_offer_cannot_take_the_reference_of_another_offer()
+    public async Task A_reference_sent_by_the_client_is_ignored_and_the_server_numbers_the_offer()
     {
         var seed = await SeedAsync();
         using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
-        var taken = NextReference();
-        await CreateDraftAsync(client, BuildPayload(seed, taken));
-        var otherId = await CreateDraftAsync(client, BuildPayload(seed, NextReference()));
 
-        var payload = BuildPayload(seed, taken);
-        payload["parentOfferId"] = otherId;
-        var response = await client.PostAsJsonAsync("/api/offers", payload);
+        var first = await CreateAndReadAsync(client, BuildPayload(seed, "Loc/999/YL/ZZ"));
+        var second = await CreateAndReadAsync(client, BuildPayload(seed, "Loc/999/YL/ZZ"));
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.True(ReferenceRules.TryParse(first.GetProperty("reference").GetString(), out var type, out var firstSequence, out var initials));
+        Assert.Equal(OfferType.Loc, type);
+        Assert.Equal("TU", initials);
+        Assert.True(ReferenceRules.TryParse(second.GetProperty("reference").GetString(), out _, out var secondSequence, out _));
+        Assert.Equal(firstSequence + 1, secondSequence);
+    }
+
+    [Fact]
+    public async Task A_new_offer_can_start_from_a_chosen_sequence_and_numbering_continues_from_it()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var start = Interlocked.Add(ref _sequence, 100000);
+
+        var payload = BuildPayload(seed, "ignored");
+        payload["serialNumber"] = start;
+        var first = await CreateAndReadAsync(client, payload);
+        var second = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
+
+        Assert.Equal($"Loc/{start}/YL/TU", first.GetProperty("reference").GetString());
+        Assert.Equal($"Loc/{start + 1}/YL/TU", second.GetProperty("reference").GetString());
+    }
+
+    [Fact]
+    public async Task A_start_sequence_below_the_next_free_number_never_reuses_a_number()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var existing = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
+        ReferenceRules.TryParse(existing.GetProperty("reference").GetString(), out _, out var existingSequence, out _);
+
+        var payload = BuildPayload(seed, "ignored");
+        payload["serialNumber"] = existingSequence;
+        var created = await CreateAndReadAsync(client, payload);
+
+        ReferenceRules.TryParse(created.GetProperty("reference").GetString(), out _, out var createdSequence, out _);
+        Assert.Equal(existingSequence + 1, createdSequence);
+    }
+
+    [Fact]
+    public async Task Changing_the_offer_type_rewrites_only_the_type_segment_of_the_reference()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var created = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
+        var id = created.GetProperty("id").GetGuid();
+        ReferenceRules.TryParse(created.GetProperty("reference").GetString(), out _, out var sequence, out _);
+
+        var payload = BuildPayload(seed, "Loc/1/YL/ZZ");
+        payload["offerType"] = "Int";
+        var response = await client.PutAsJsonAsync($"/api/offers/{id}", payload);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await ReadJsonAsync(response);
+        Assert.Equal($"Int/{sequence}/YL/TU", updated.GetProperty("reference").GetString());
     }
 
     [Fact]
@@ -170,21 +221,6 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         var metadata = detail.GetProperty("document").GetProperty("metadata");
         Assert.Equal(14, metadata.GetProperty("validityDays").GetInt32());
         Assert.Equal("2026-11-04", metadata.GetProperty("expiryDate").GetString());
-    }
-
-    [Fact]
-    public async Task Duplicate_reference_and_version_returns_409_with_a_readable_detail()
-    {
-        var seed = await SeedAsync();
-        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
-        var reference = NextReference();
-        await CreateDraftAsync(client, BuildPayload(seed, reference));
-
-        var response = await client.PostAsJsonAsync("/api/offers", BuildPayload(seed, reference));
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("already exists", (await ReadJsonAsync(response)).GetProperty("detail").GetString());
     }
 
     [Fact]
@@ -325,6 +361,13 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
                 }
             }
         };
+    }
+
+    private static async Task<JsonElement> CreateAndReadAsync(HttpClient client, Dictionary<string, object?> payload)
+    {
+        var response = await client.PostAsJsonAsync("/api/offers", payload);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return await ReadJsonAsync(response);
     }
 
     private static async Task<Guid> CreateDraftAsync(HttpClient client, Dictionary<string, object?> payload)

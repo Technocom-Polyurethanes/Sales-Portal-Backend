@@ -278,17 +278,11 @@ public class OfferService : IOfferService
             throw new ValidationException("Offer type is required.");
         }
 
-        draft.Reference = draft.Reference?.Trim() ?? string.Empty;
-        if (draft.Reference.Length == 0)
-        {
-            draft.Reference = (await GetNextSequenceAsync(
-                draft.OfferType.Value, currentUserId, cancellationToken)).SuggestedReference;
-        }
-
-        if (ReferenceRules.TryGetSequence(draft.Reference, out var sequence))
-        {
-            draft.SerialNumber = sequence;
-        }
+        // The reference is always generated here and a client value is ignored. A new
+        // offer may start from a higher sequence than the suggested one; numbering then continues from it.
+        var next = await GetNextSequenceAsync(draft.OfferType.Value, currentUserId, cancellationToken);
+        ReferenceRules.TryParse(next.SuggestedReference, out _, out _, out var initials);
+        var sequence = Math.Max(draft.SerialNumber, next.SuggestedSequence);
 
         draft.Version = draft.Version <= 0 ? 1 : draft.Version;
         draft.CreatedByUserId = currentUserId;
@@ -302,15 +296,29 @@ public class OfferService : IOfferService
             var parent = await _offers.GetAll()
                 .AsNoTracking()
                 .Where(o => o.Id == parentOfferId)
-                .Select(o => new { o.RootOfferId })
+                .Select(o => new { o.RootOfferId, o.Reference, o.SerialNumber })
                 .FirstOrDefaultAsync(cancellationToken)
                 ?? throw new NotFoundException("The parent offer was not found.");
+
+            // A new version keeps the number of its offer; only the type segment follows the draft.
+            if (ReferenceRules.TryParse(parent.Reference, out _, out var parentSequence, out var parentInitials))
+            {
+                sequence = parentSequence;
+                initials = parentInitials;
+            }
+            else if (parent.SerialNumber > 0)
+            {
+                sequence = parent.SerialNumber;
+            }
 
             draft.RootOfferId = parent.RootOfferId;
             draft.Version = await _offers.GetAll()
                 .Where(o => o.RootOfferId == parent.RootOfferId)
                 .MaxAsync(o => o.Version, cancellationToken) + 1;
         }
+
+        draft.SerialNumber = sequence;
+        draft.Reference = ReferenceRules.Build(draft.OfferType.Value, sequence, initials);
 
         var catalog = await LoadCatalogAsync(draft, cancellationToken);
         var calculation = _calculator.Calculate(draft, catalog);
@@ -365,10 +373,9 @@ public class OfferService : IOfferService
             throw new ValidationException("Offer type is required.");
         }
 
-        // An omitted reference keeps the current one; the sequence always follows the reference.
-        draft.Reference = string.IsNullOrWhiteSpace(draft.Reference)
-            ? DisplayReference(offer)
-            : draft.Reference.Trim();
+        // The reference is never taken from the client: the offer keeps its number and
+        // initials and only the type segment follows the selected offer type.
+        draft.Reference = ReferenceRules.WithType(DisplayReference(offer), draft.OfferType.Value);
 
         if (ReferenceRules.TryGetSequence(draft.Reference, out var sequence))
         {
