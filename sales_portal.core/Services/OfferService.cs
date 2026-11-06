@@ -264,7 +264,8 @@ public class OfferService : IOfferService
         return new OfferNextSequenceDto
         {
             SuggestedSequence = suggestedSequence,
-            SuggestedReference = ReferenceRules.Build(offerType, suggestedSequence, initials)
+            SuggestedReference = ReferenceRules.Build(offerType, suggestedSequence, initials),
+            IsFirstOffer = references.Count == 0
         };
     }
 
@@ -282,7 +283,10 @@ public class OfferService : IOfferService
         // offer may start from a higher sequence than the suggested one; numbering then continues from it.
         var next = await GetNextSequenceAsync(draft.OfferType.Value, currentUserId, cancellationToken);
         ReferenceRules.TryParse(next.SuggestedReference, out _, out _, out var initials);
-        var sequence = Math.Max(draft.SerialNumber, next.SuggestedSequence);
+        // Only the first offer may choose its number; later ones always take the next free one.
+        var sequence = next.IsFirstOffer
+            ? Math.Max(draft.SerialNumber, next.SuggestedSequence)
+            : next.SuggestedSequence;
 
         draft.Version = draft.Version <= 0 ? 1 : draft.Version;
         draft.CreatedByUserId = currentUserId;

@@ -156,35 +156,36 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
     }
 
     [Fact]
-    public async Task A_new_offer_can_start_from_a_chosen_sequence_and_numbering_continues_from_it()
+    public async Task Only_the_first_offer_can_choose_its_sequence_and_numbering_continues_from_it()
     {
         var seed = await SeedAsync();
         using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
-        var start = Interlocked.Add(ref _sequence, 100000);
+
+        // The tests of this class share one database, so start from an empty offers table.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Offers.RemoveRange(await db.Offers.ToListAsync());
+            await db.SaveChangesAsync();
+        }
+
+        var next = await ReadJsonAsync(await client.GetAsync("/api/offers/next-sequence?offerType=Loc"));
+        Assert.True(next.GetProperty("isFirstOffer").GetBoolean());
 
         var payload = BuildPayload(seed, "ignored");
-        payload["serialNumber"] = start;
+        payload["serialNumber"] = 3090;
         var first = await CreateAndReadAsync(client, payload);
-        var second = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
 
-        Assert.Equal($"Loc/{start}/YL/TU", first.GetProperty("reference").GetString());
-        Assert.Equal($"Loc/{start + 1}/YL/TU", second.GetProperty("reference").GetString());
-    }
+        var laterPayload = BuildPayload(seed, "ignored");
+        laterPayload["serialNumber"] = 9000;
+        var second = await CreateAndReadAsync(client, laterPayload);
 
-    [Fact]
-    public async Task A_start_sequence_below_the_next_free_number_never_reuses_a_number()
-    {
-        var seed = await SeedAsync();
-        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
-        var existing = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
-        ReferenceRules.TryParse(existing.GetProperty("reference").GetString(), out _, out var existingSequence, out _);
+        Assert.Equal("Loc/3090/YL/TU", first.GetProperty("reference").GetString());
+        // A later offer cannot pick its number; it continues from the first one.
+        Assert.Equal("Loc/3091/YL/TU", second.GetProperty("reference").GetString());
 
-        var payload = BuildPayload(seed, "ignored");
-        payload["serialNumber"] = existingSequence;
-        var created = await CreateAndReadAsync(client, payload);
-
-        ReferenceRules.TryParse(created.GetProperty("reference").GetString(), out _, out var createdSequence, out _);
-        Assert.Equal(existingSequence + 1, createdSequence);
+        next = await ReadJsonAsync(await client.GetAsync("/api/offers/next-sequence?offerType=Loc"));
+        Assert.False(next.GetProperty("isFirstOffer").GetBoolean());
     }
 
     [Fact]
