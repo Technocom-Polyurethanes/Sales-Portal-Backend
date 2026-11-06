@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using sales_portal.core.Caching;
 using sales_portal.core.Services;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Models;
@@ -59,6 +60,11 @@ internal static class TestFactory
 
     public static CustomerService CreateCustomerService(AppDbContext context)
         => new(new Repository<Customer>(context));
+
+    public static BankAccountService CreateBankAccountService(
+        AppDbContext context,
+        IReferenceDataCache? cache = null)
+        => new(new Repository<BankAccount>(context), cache);
 
     public static ImportService CreateImportService(AppDbContext context)
         => new(
