@@ -11,7 +11,7 @@ namespace sales_portal.domain.Models
     {
         public string Username { get; set; } = default!;          // unique
         public string FullName { get; set; } = default!;
-        public string Initials { get; set; } = default!;          // used in the reference (YL, AA)
+        public string Initials { get; set; } = default!;          // user initials printed in the reference (e.g. JD)
         public string? Email { get; set; }
         public string? RoleTitle { get; set; }                     // "Sales manager"
         public string? RoleTitleAr { get; set; }

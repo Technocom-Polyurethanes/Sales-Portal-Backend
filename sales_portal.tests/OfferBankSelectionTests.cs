@@ -1,6 +1,7 @@
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.Services;
+using sales_portal.domain.Enums;
 using sales_portal.domain.Models;
 using Xunit;
 
@@ -86,7 +87,7 @@ public class OfferBankSelectionTests
         var offer = TestFactory.AddOffer(
             db.Context,
             setup.Basics,
-            "100/OCT./YL/AA",
+            "Loc/100/YL/AA",
             issueDate: new DateOnly(2026, 10, 21));
 
         var service = TestFactory.CreateOfferService(db.Context);
@@ -103,7 +104,8 @@ public class OfferBankSelectionTests
     {
         var draft = new OfferDraftDto
         {
-            Reference = "100/OCT./YL/AA",
+            Reference = "Loc/100/YL/AA",
+            OfferType = OfferType.Loc,
             IssueDate = new DateOnly(2026, 10, 21),
             CustomerId = setup.Basics.Customer.Id,
             PaymentTermId = setup.Basics.PaymentTerm.Id,

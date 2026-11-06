@@ -136,6 +136,7 @@ public class CustomerService : ICustomerService
             {
                 Id = o.Id,
                 Reference = o.Reference,
+                OfferType = o.OfferType,
                 SerialNumber = o.SerialNumber,
                 Version = o.Version,
                 CustomerId = o.CustomerId,

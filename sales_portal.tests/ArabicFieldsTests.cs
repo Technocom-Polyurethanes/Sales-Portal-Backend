@@ -14,7 +14,8 @@ public class ArabicFieldsTests
     {
         var draft = new OfferDraftDto
         {
-            Reference = "100/OCT./YL/AA",
+            Reference = "Loc/100/YL/AA",
+            OfferType = OfferType.Loc,
             CustomerId = Guid.NewGuid(),
             Attention = "English attention",
             AttentionAr = "انتباه عربي",
@@ -45,7 +46,8 @@ public class ArabicFieldsTests
     {
         var draft = new OfferDraftDto
         {
-            Reference = "100/OCT./YL/AA",
+            Reference = "Loc/100/YL/AA",
+            OfferType = OfferType.Loc,
             CustomerId = Guid.NewGuid(),
             Attention = "Fallback attention",
             IssueDate = new DateOnly(2026, 10, 1),
@@ -79,7 +81,8 @@ public class ArabicFieldsTests
     {
         var draft = new OfferDraftDto
         {
-            Reference = "100/OCT./YL/AA",
+            Reference = "Loc/100/YL/AA",
+            OfferType = OfferType.Loc,
             CustomerId = Guid.NewGuid(),
             Attention = "English attention",
             IssueDate = new DateOnly(2026, 10, 1),

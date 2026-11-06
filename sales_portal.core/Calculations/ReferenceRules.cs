@@ -1,97 +1,141 @@
 using System.Text.RegularExpressions;
+using sales_portal.domain.Enums;
 
 namespace sales_portal.core.Calculations;
 
 /// <summary>
-/// Format and month rules for offer references such as <c>3089/OCT./YL/AA</c>.
-/// The month segment always follows the issue date. Matching is case-insensitive
-/// so a manually typed <c>oct.</c> is accepted and compared by month.
+/// Format rules for offer references such as <c>Loc/42/YL/JD</c>.
+/// The first segment is the offer type, the second the sequence, <c>YL</c> is the
+/// static company identifier and the last segment is the creator's initials.
 /// </summary>
 public static class ReferenceRules
 {
-    public static readonly IReadOnlyList<string> MonthAbbreviations =
-    [
-        "JAN.", "FEB.", "MAR.", "APR.", "MAY", "JUN.",
-        "JUL.", "AUG.", "SEP.", "OCT.", "NOV.", "DEC."
-    ];
-
-    // Single source of truth for the month alternation used in both regexes.
-    private const string MonthAlternation =
-        @"JAN\.|FEB\.|MAR\.|APR\.|MAY|JUN\.|JUL\.|AUG\.|SEP\.|OCT\.|NOV\.|DEC\.";
-
     public const string Pattern =
-        @"^\d+/(" + MonthAlternation + @")/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$";
+        @"^(?<type>Loc|Int)/(?<sequence>\d+)/YL/(?<initials>[A-Za-z0-9]+)$";
 
-    public const string ExpectedFormat = "100/OCT./YL/AA";
+    public const string ExpectedFormat = "Loc/42/YL/JD";
 
     private static readonly Regex ReferenceRegex = new(
         Pattern,
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    private static readonly Regex MonthRegex = new(
-        @"^\d+/(?<month>" + MonthAlternation + @")/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    /// <summary>Builds a reference from its parts.</summary>
+    public static string Build(OfferType type, int sequence, string initials)
+        => $"{type}/{sequence}/YL/{initials.Trim().ToUpperInvariant()}";
 
-    /// <summary>Returns the month abbreviation for a 1-based month number.</summary>
-    public static string MonthAbbreviation(int month)
-    {
-        if (month is < 1 or > 12)
-        {
-            throw new ArgumentOutOfRangeException(nameof(month), month, "Month must be between 1 and 12.");
-        }
-
-        return MonthAbbreviations[month - 1];
-    }
-
-    /// <summary>Builds a reference from its parts using the configured prefix and user initials.</summary>
-    public static string Build(int sequence, DateOnly issueDate, string prefix, string initials)
-        => $"{sequence}/{MonthAbbreviation(issueDate.Month)}/{prefix}/{initials}";
-
-    /// <summary>True when the reference follows the sequence/month/prefix/initials format.</summary>
+    /// <summary>True when the reference follows the type/sequence/YL/initials format.</summary>
     public static bool IsValid(string? reference)
         => !string.IsNullOrWhiteSpace(reference) && ReferenceRegex.IsMatch(reference.Trim());
 
-    /// <summary>
-    /// Returns the normalized (uppercase) month segment when the reference matches the format.
-    /// </summary>
-    public static bool TryGetMonth(string? reference, out string month)
+    /// <summary>Splits a new-format reference into its type, sequence and initials.</summary>
+    public static bool TryParse(string? reference, out OfferType type, out int sequence, out string initials)
     {
-        month = string.Empty;
+        type = OfferType.Loc;
+        sequence = 0;
+        initials = string.Empty;
 
         if (string.IsNullOrWhiteSpace(reference))
         {
             return false;
         }
 
-        var match = MonthRegex.Match(reference.Trim());
-        if (!match.Success)
+        var match = ReferenceRegex.Match(reference.Trim());
+        if (!match.Success || !int.TryParse(match.Groups["sequence"].Value, out sequence))
         {
             return false;
         }
 
-        month = match.Groups["month"].Value.ToUpperInvariant();
+        type = string.Equals(match.Groups["type"].Value, nameof(OfferType.Int), StringComparison.OrdinalIgnoreCase)
+            ? OfferType.Int
+            : OfferType.Loc;
+        initials = match.Groups["initials"].Value.ToUpperInvariant();
         return true;
     }
 
     /// <summary>
-    /// Validates an optional reference against the format and the issue date month.
+    /// Rewrites the type segment of a new-format reference and keeps its sequence and initials,
+    /// so changing the offer type never changes the number.
+    /// </summary>
+    public static string WithType(string reference, OfferType type)
+        => TryParse(reference, out _, out var sequence, out var initials)
+            ? Build(type, sequence, initials)
+            : reference;
+
+    /// <summary>
+    /// Reads the sequence from a new-format reference. Legacy references such as
+    /// <c>3089/OCT./YL/AA</c> fall back to their first numeric segment so the next
+    /// sequence stays above already recorded offers.
+    /// </summary>
+    public static bool TryGetSequence(string? reference, out int sequence)
+    {
+        sequence = 0;
+
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return false;
+        }
+
+        var trimmed = reference.Trim();
+        var match = ReferenceRegex.Match(trimmed);
+        if (match.Success)
+        {
+            return int.TryParse(match.Groups["sequence"].Value, out sequence);
+        }
+
+        var firstSegment = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return int.TryParse(firstSegment, out sequence);
+    }
+
+    /// <summary>
+    /// Resolves the printed initials. The user's stored initials win; a user without
+    /// them falls back to the first letters of their full name.
+    /// </summary>
+    public static string InitialsFrom(string? initials, string? fullName)
+    {
+        if (!string.IsNullOrWhiteSpace(initials))
+        {
+            // Keep the reference valid when stored initials contain dots or spaces.
+            var cleaned = new string(initials.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+            if (cleaned.Length > 0)
+            {
+                return cleaned;
+            }
+        }
+
+        var words = (fullName ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var derived = string.Concat(words.Take(2).Select(word => char.ToUpperInvariant(word[0])));
+
+        return derived.Length > 0 ? derived : "NA";
+    }
+
+    /// <summary>
+    /// Validates a reference against the format and the selected offer type.
     /// Returns <c>null</c> when the reference is empty or valid.
     /// </summary>
-    public static string? Validate(string? reference, DateOnly issueDate)
+    public static string? Validate(string? reference, OfferType? offerType)
     {
+        if (offerType == null)
+        {
+            return "Offer type is required.";
+        }
+
         if (string.IsNullOrWhiteSpace(reference))
         {
             return null;
         }
 
-        if (!TryGetMonth(reference, out var month))
+        var match = ReferenceRegex.Match(reference.Trim());
+        if (!match.Success)
         {
             return $"Reference must follow the format {ExpectedFormat}.";
         }
 
-        var expectedMonth = MonthAbbreviation(issueDate.Month);
-        return month == expectedMonth
+        return string.Equals(
+            match.Groups["type"].Value,
+            offerType.Value.ToString(),
+            StringComparison.OrdinalIgnoreCase)
             ? null
-            : $"Reference month ({month}) does not match the issue date month ({expectedMonth}).";
+            : $"Reference must start with '{offerType.Value}' to match the offer type.";
     }
 }

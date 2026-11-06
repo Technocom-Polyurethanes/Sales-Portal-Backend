@@ -1,6 +1,7 @@
 using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.Services;
+using sales_portal.domain.Enums;
 using sales_portal.domain.Models;
 using Xunit;
 
@@ -9,78 +10,96 @@ namespace SalesPortal.Tests;
 public class ReferenceRulesTests
 {
     [Fact]
-    public void Build_produces_a_valid_reference_for_every_month()
+    public void Build_produces_the_type_sequence_and_initials()
     {
-        for (var month = 1; month <= 12; month++)
-        {
-            var issueDate = new DateOnly(2026, month, 15);
-            var reference = ReferenceRules.Build(month, issueDate, "YL", "AA");
-
-            Assert.Equal($"{month}/{ReferenceRules.MonthAbbreviations[month - 1]}/YL/AA", reference);
-            Assert.True(ReferenceRules.IsValid(reference), reference);
-            Assert.Null(ReferenceRules.Validate(reference, issueDate));
-        }
+        Assert.Equal("Loc/42/YL/JD", ReferenceRules.Build(OfferType.Loc, 42, "jd"));
+        Assert.Equal("Int/43/YL/AB", ReferenceRules.Build(OfferType.Int, 43, "AB"));
+        Assert.True(ReferenceRules.IsValid("Loc/42/YL/JD"));
+        Assert.True(ReferenceRules.IsValid("Int/43/YL/AB"));
+        Assert.Null(ReferenceRules.Validate("Loc/42/YL/JD", OfferType.Loc));
+        Assert.Null(ReferenceRules.Validate("Int/43/YL/AB", OfferType.Int));
     }
 
     [Fact]
-    public void May_is_the_only_month_without_a_period()
+    public void TryParse_splits_type_sequence_and_initials()
     {
-        var issueDate = new DateOnly(2026, 5, 20);
-
-        Assert.True(ReferenceRules.IsValid("77/MAY/YL/AA"));
-        Assert.Null(ReferenceRules.Validate("77/MAY/YL/AA", issueDate));
-        Assert.False(ReferenceRules.IsValid("77/MAY./YL/AA"));
+        Assert.True(ReferenceRules.TryParse("Int/43/YL/jd", out var type, out var sequence, out var initials));
+        Assert.Equal(OfferType.Int, type);
+        Assert.Equal(43, sequence);
+        Assert.Equal("JD", initials);
+        Assert.False(ReferenceRules.TryParse("3089/OCT./YL/AA", out _, out _, out _));
+        Assert.False(ReferenceRules.TryParse(null, out _, out _, out _));
     }
 
     [Fact]
-    public void Month_matching_is_case_insensitive_and_normalized()
+    public void WithType_changes_only_the_type_segment()
     {
-        var issueDate = new DateOnly(2026, 10, 21);
+        Assert.Equal("Int/42/YL/JD", ReferenceRules.WithType("Loc/42/YL/JD", OfferType.Int));
+        Assert.Equal("Loc/42/YL/JD", ReferenceRules.WithType("Int/42/YL/JD", OfferType.Loc));
+    }
 
-        Assert.True(ReferenceRules.IsValid("3089/oct./YL/aa"));
-        Assert.True(ReferenceRules.TryGetMonth("3089/oct./YL/aa", out var month));
-        Assert.Equal("OCT.", month);
-        Assert.Null(ReferenceRules.Validate("3089/oct./YL/AA", issueDate));
+    [Fact]
+    public void Reference_type_must_match_the_offer_type()
+    {
+        Assert.Equal(
+            "Reference must start with 'Loc' to match the offer type.",
+            ReferenceRules.Validate("Int/43/YL/AB", OfferType.Loc));
+        Assert.Equal(
+            "Reference must start with 'Int' to match the offer type.",
+            ReferenceRules.Validate("Loc/42/YL/JD", OfferType.Int));
     }
 
     [Theory]
-    [InlineData("3089")]
-    [InlineData("3089/OCT/YL/AA")]
-    [InlineData("3089/OCT./YL")]
-    [InlineData("3089/OCT./YL/AA/EXTRA")]
-    [InlineData("OCT./3089/YL/AA")]
-    [InlineData("3089/OCT./YL/")]
-    [InlineData("3089/OCT./YL/AA BB")]
+    [InlineData("42/YL/JD")]
+    [InlineData("Loc/42/AA/JD")]
+    [InlineData("Loc/42/YL")]
+    [InlineData("Loc/42/YL/JD/EXTRA")]
+    [InlineData("Loc//YL/JD")]
+    [InlineData("Loc/42/YL/JD BB")]
+    [InlineData("X/42/YL/JD")]
     public void Invalid_references_are_rejected(string reference)
     {
         Assert.False(ReferenceRules.IsValid(reference));
-        Assert.NotNull(ReferenceRules.Validate(reference, new DateOnly(2026, 10, 1)));
+        Assert.NotNull(ReferenceRules.Validate(reference, OfferType.Loc));
     }
 
     [Fact]
-    public void Empty_reference_is_not_valid_but_is_left_to_the_required_field_check()
+    public void Missing_offer_type_is_rejected_for_a_typed_reference()
+    {
+        Assert.Equal("Offer type is required.", ReferenceRules.Validate("Loc/42/YL/JD", null));
+    }
+
+    [Fact]
+    public void Empty_reference_is_left_to_the_required_field_check()
     {
         Assert.False(ReferenceRules.IsValid(string.Empty));
-        Assert.Null(ReferenceRules.Validate(string.Empty, new DateOnly(2026, 10, 1)));
+        Assert.Null(ReferenceRules.Validate(string.Empty, OfferType.Loc));
     }
 
     [Fact]
-    public void Mismatched_month_returns_the_expected_message()
+    public void Legacy_references_still_yield_their_sequence()
     {
-        var error = ReferenceRules.Validate(
-            "100/OCT./YL/AA",
-            new DateOnly(2026, 11, 5));
+        Assert.True(ReferenceRules.TryGetSequence("3089/OCT./YL/AA", out var legacy));
+        Assert.Equal(3089, legacy);
+        Assert.True(ReferenceRules.TryGetSequence("Loc/42/YL/JD", out var current));
+        Assert.Equal(42, current);
+        Assert.False(ReferenceRules.TryGetSequence("not-a-reference", out _));
+    }
 
-        Assert.Equal(
-            "Reference month (OCT.) does not match the issue date month (NOV.).",
-            error);
+    [Fact]
+    public void Initials_come_from_the_user_and_fall_back_to_the_full_name()
+    {
+        Assert.Equal("JD", ReferenceRules.InitialsFrom("jd", "John Doe"));
+        Assert.Equal("JD", ReferenceRules.InitialsFrom(" j.d. ", "John Doe"));
+        Assert.Equal("JD", ReferenceRules.InitialsFrom(null, "John Doe"));
+        Assert.Equal("NA", ReferenceRules.InitialsFrom("  ", null));
     }
 
     [Fact]
     public void Calculator_reports_a_malformed_reference()
     {
         var calculation = CreateCalculator().Calculate(
-            CreateDraft("100/OCT/YL/AA", new DateOnly(2026, 10, 1)),
+            CreateDraft("Loc/42/AA/JD"),
             CreateCatalog());
 
         Assert.Contains(
@@ -89,57 +108,91 @@ public class ReferenceRulesTests
     }
 
     [Fact]
-    public void Calculator_reports_a_reference_month_that_does_not_match_the_issue_date()
+    public void Calculator_reports_a_reference_type_that_does_not_match()
     {
         var calculation = CreateCalculator().Calculate(
-            CreateDraft("100/OCT./YL/AA", new DateOnly(2026, 11, 5)),
+            CreateDraft("Int/42/YL/JD", OfferType.Loc),
             CreateCatalog());
 
         Assert.Contains(
-            "Reference month (OCT.) does not match the issue date month (NOV.).",
+            "Reference must start with 'Loc' to match the offer type.",
             calculation.ValidationErrors);
     }
 
     [Fact]
-    public void Calculator_accepts_a_reference_that_matches_the_issue_date()
+    public void Calculator_reports_a_missing_offer_type()
     {
         var calculation = CreateCalculator().Calculate(
-            CreateDraft("100/may/YL/AA", new DateOnly(2026, 5, 1)),
+            CreateDraft("Loc/42/YL/JD", offerType: null),
+            CreateCatalog());
+
+        Assert.Contains("Offer type is required.", calculation.ValidationErrors);
+    }
+
+    [Fact]
+    public void Calculator_accepts_a_matching_reference()
+    {
+        var calculation = CreateCalculator().Calculate(
+            CreateDraft("Int/42/YL/JD", OfferType.Int),
             CreateCatalog());
 
         Assert.DoesNotContain(calculation.ValidationErrors, error => error.StartsWith("Reference"));
     }
 
     [Fact]
-    public async Task Next_sequence_returns_a_suggested_reference_with_the_requested_month()
+    public async Task Next_sequence_starts_at_one_and_includes_the_user_initials()
     {
         using var db = new TestDatabase();
         var basics = TestFactory.SeedBasics(db.Context);
-        TestFactory.AddOffer(
-            db.Context,
-            basics,
-            "5/MAY/YL/AA",
-            version: 5,
-            issueDate: new DateOnly(2026, 5, 10));
+        var service = TestFactory.CreateOfferService(db.Context);
+
+        var result = await service.GetNextSequenceAsync(OfferType.Loc, basics.User.Id, CancellationToken.None);
+
+        Assert.Equal(1, result.SuggestedSequence);
+        Assert.Equal("Loc/1/YL/TU", result.SuggestedReference);
+    }
+
+    [Fact]
+    public async Task Next_sequence_increments_from_the_last_recorded_offer()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        TestFactory.AddOffer(db.Context, basics, "Loc/41/YL/AA", serialNumber: 41);
+        TestFactory.AddOffer(db.Context, basics, "Int/42/YL/AA", serialNumber: 42);
 
         var service = TestFactory.CreateOfferService(db.Context);
-        var result = await service.GetNextSequenceAsync(2026, 5, basics.User.Id, CancellationToken.None);
 
-        Assert.Equal(6, result.SuggestedSequence);
-        Assert.Equal("6/MAY/YL/TU", result.SuggestedReference);
-        Assert.Null(ReferenceRules.Validate(
-            result.SuggestedReference,
-            new DateOnly(2026, 5, 1)));
+        var local = await service.GetNextSequenceAsync(OfferType.Loc, basics.User.Id, CancellationToken.None);
+        var international = await service.GetNextSequenceAsync(OfferType.Int, basics.User.Id, CancellationToken.None);
+
+        Assert.Equal(43, local.SuggestedSequence);
+        Assert.Equal("Loc/43/YL/TU", local.SuggestedReference);
+        Assert.Equal("Int/43/YL/TU", international.SuggestedReference);
+    }
+
+    [Fact]
+    public async Task Next_sequence_falls_back_to_a_legacy_first_segment()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        TestFactory.AddOffer(db.Context, basics, "77/OCT./YL/AA", serialNumber: 0);
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var result = await service.GetNextSequenceAsync(OfferType.Int, basics.User.Id, CancellationToken.None);
+
+        Assert.Equal(78, result.SuggestedSequence);
+        Assert.Equal("Int/78/YL/TU", result.SuggestedReference);
     }
 
     private static OfferCalculator CreateCalculator()
         => new(new OfferDocumentBuilder());
 
-    private static OfferDraftDto CreateDraft(string reference, DateOnly issueDate)
+    private static OfferDraftDto CreateDraft(string reference, OfferType? offerType = OfferType.Loc)
         => new()
         {
             Reference = reference,
-            IssueDate = issueDate,
+            OfferType = offerType,
+            IssueDate = new DateOnly(2026, 10, 1),
             CustomerId = Guid.NewGuid()
         };
 

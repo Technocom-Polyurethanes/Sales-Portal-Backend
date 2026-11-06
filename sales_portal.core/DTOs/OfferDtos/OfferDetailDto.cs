@@ -6,6 +6,7 @@ public class OfferDetailDto
 {
     public Guid Id { get; set; }
     public string Reference { get; set; } = string.Empty;
+    public OfferType OfferType { get; set; }
     public int SerialNumber { get; set; }
     public int Version { get; set; }
     public Guid? ParentOfferId { get; set; }

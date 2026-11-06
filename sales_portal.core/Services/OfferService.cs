@@ -122,6 +122,7 @@ public class OfferService : IOfferService
             {
                 Id = o.Id,
                 Reference = o.Reference,
+                OfferType = o.OfferType,
                 SerialNumber = o.SerialNumber,
                 Version = o.Version,
                 CustomerId = o.CustomerId,
@@ -204,6 +205,7 @@ public class OfferService : IOfferService
             {
                 Id = o.Id,
                 Reference = o.Reference,
+                OfferType = o.OfferType,
                 SerialNumber = o.SerialNumber,
                 Version = o.Version,
                 CustomerId = o.CustomerId,
@@ -228,63 +230,42 @@ public class OfferService : IOfferService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<OfferNextSequenceDto> GetNextSequenceAsync(int year, int month, Guid? currentUserId, CancellationToken cancellationToken)
+    public async Task<OfferNextSequenceDto> GetNextSequenceAsync(
+        OfferType offerType,
+        Guid? currentUserId,
+        CancellationToken cancellationToken)
     {
-        if (year <= 0 || month < 1 || month > 12)
-        {
-            throw new ValidationException("Year and month are required.");
-        }
-
-        var monthStart = new DateOnly(year, month, 1);
-        var nextMonthStart = monthStart.AddMonths(1);
-
         var maxSeq = await _offers.GetAll()
             .AsNoTracking()
-            .Where(o => o.IssueDate >= monthStart && o.IssueDate < nextMonthStart)
             .MaxAsync(o => (int?)o.SerialNumber, cancellationToken) ?? 0;
 
-        if (maxSeq <= 0)
-        {
-            var refs = await _offers.GetAll()
-                .AsNoTracking()
-                .Where(o => o.IssueDate >= monthStart && o.IssueDate < nextMonthStart)
-                .Select(o => o.Reference)
-                .ToListAsync(cancellationToken);
+        // Older rows may not have a stored serial number, so also read it from their
+        // reference. New references carry it as the second segment, legacy ones as the first.
+        var references = await _offers.GetAll()
+            .AsNoTracking()
+            .Select(o => o.Reference)
+            .ToListAsync(cancellationToken);
 
-            foreach (var reference in refs)
+        foreach (var reference in references)
+        {
+            if (ReferenceRules.TryGetSequence(reference, out var parsed) && parsed > maxSeq)
             {
-                var firstSegment = reference.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-                if (int.TryParse(firstSegment, out var parsed) && parsed > maxSeq)
-                {
-                    maxSeq = parsed;
-                }
+                maxSeq = parsed;
             }
         }
 
         var suggestedSequence = maxSeq + 1;
 
-        var company = await _catalogService.GetOfferCatalogAsync(null, currentUserId, cancellationToken);
-        var prefix = string.IsNullOrWhiteSpace(company.CompanySettings?.ReferencePrefix)
-            ? "YL"
-            : company.CompanySettings.ReferencePrefix.Trim();
-
-        string initials = "AA";
-        var createdByInitials = company.CreatedBy?.Initials;
-        if (!string.IsNullOrWhiteSpace(createdByInitials))
-        {
-            initials = createdByInitials.Trim();
-        }
-
-        var suggestedReference = ReferenceRules.Build(
-            suggestedSequence,
-            new DateOnly(year, month, 1),
-            prefix,
-            initials);
+        var catalog = await _catalogService.GetOfferCatalogAsync(null, currentUserId, cancellationToken);
+        var initials = ReferenceRules.InitialsFrom(
+            catalog.CreatedBy?.Initials,
+            catalog.CreatedBy?.FullName);
 
         return new OfferNextSequenceDto
         {
             SuggestedSequence = suggestedSequence,
-            SuggestedReference = suggestedReference
+            SuggestedReference = ReferenceRules.Build(offerType, suggestedSequence, initials),
+            IsFirstOffer = references.Count == 0
         };
     }
 
@@ -293,12 +274,20 @@ public class OfferService : IOfferService
         Guid currentUserId,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(draft.Reference))
+        if (draft.OfferType == null)
         {
-            throw new ValidationException("Offer reference is required.");
+            throw new ValidationException("Offer type is required.");
         }
 
-        draft.Reference = draft.Reference.Trim();
+        // The reference is always generated here and a client value is ignored. A new
+        // offer may start from a higher sequence than the suggested one; numbering then continues from it.
+        var next = await GetNextSequenceAsync(draft.OfferType.Value, currentUserId, cancellationToken);
+        ReferenceRules.TryParse(next.SuggestedReference, out _, out _, out var initials);
+        // Only the first offer may choose its number; later ones always take the next free one.
+        var sequence = next.IsFirstOffer
+            ? Math.Max(draft.SerialNumber, next.SuggestedSequence)
+            : next.SuggestedSequence;
+
         draft.Version = draft.Version <= 0 ? 1 : draft.Version;
         draft.CreatedByUserId = currentUserId;
         draft.Status = OfferStatus.Draft;
@@ -311,15 +300,29 @@ public class OfferService : IOfferService
             var parent = await _offers.GetAll()
                 .AsNoTracking()
                 .Where(o => o.Id == parentOfferId)
-                .Select(o => new { o.RootOfferId })
+                .Select(o => new { o.RootOfferId, o.Reference, o.SerialNumber })
                 .FirstOrDefaultAsync(cancellationToken)
                 ?? throw new NotFoundException("The parent offer was not found.");
+
+            // A new version keeps the number of its offer; only the type segment follows the draft.
+            if (ReferenceRules.TryParse(parent.Reference, out _, out var parentSequence, out var parentInitials))
+            {
+                sequence = parentSequence;
+                initials = parentInitials;
+            }
+            else if (parent.SerialNumber > 0)
+            {
+                sequence = parent.SerialNumber;
+            }
 
             draft.RootOfferId = parent.RootOfferId;
             draft.Version = await _offers.GetAll()
                 .Where(o => o.RootOfferId == parent.RootOfferId)
                 .MaxAsync(o => o.Version, cancellationToken) + 1;
         }
+
+        draft.SerialNumber = sequence;
+        draft.Reference = ReferenceRules.Build(draft.OfferType.Value, sequence, initials);
 
         var catalog = await LoadCatalogAsync(draft, cancellationToken);
         var calculation = _calculator.Calculate(draft, catalog);
@@ -356,11 +359,6 @@ public class OfferService : IOfferService
         Guid currentUserId,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(draft.Reference))
-        {
-            throw new ValidationException("Offer reference is required.");
-        }
-
         var offer = await FullOfferQuery()
             .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
@@ -374,7 +372,20 @@ public class OfferService : IOfferService
             throw new ValidationException("Only draft offers can be updated.");
         }
 
-        draft.Reference = draft.Reference.Trim();
+        if (draft.OfferType == null)
+        {
+            throw new ValidationException("Offer type is required.");
+        }
+
+        // The reference is never taken from the client: the offer keeps its number and
+        // initials and only the type segment follows the selected offer type.
+        draft.Reference = ReferenceRules.WithType(DisplayReference(offer), draft.OfferType.Value);
+
+        if (ReferenceRules.TryGetSequence(draft.Reference, out var sequence))
+        {
+            draft.SerialNumber = sequence;
+        }
+
         draft.Version = draft.Version <= 0 ? offer.Version : draft.Version;
         draft.RootOfferId = offer.RootOfferId;
         draft.ParentOfferId = offer.ParentOfferId;
@@ -631,7 +642,8 @@ public class OfferService : IOfferService
         return new OfferDetailDto
         {
             Id = offer.Id,
-            Reference = offer.Reference,
+            Reference = DisplayReference(offer),
+            OfferType = offer.OfferType,
             SerialNumber = offer.SerialNumber,
             Version = offer.Version,
             ParentOfferId = offer.ParentOfferId,
@@ -694,12 +706,24 @@ public class OfferService : IOfferService
         };
     }
 
+    // Stored legacy references are shown in the new format without rewriting old rows.
+    private static string DisplayReference(Offer offer)
+        => ReferenceRules.IsValid(offer.Reference)
+            ? offer.Reference
+            : ReferenceRules.Build(
+                offer.OfferType,
+                ReferenceRules.TryGetSequence(offer.Reference, out var sequence)
+                    ? sequence
+                    : offer.SerialNumber,
+                ReferenceRules.InitialsFrom(offer.CreatedBy?.Initials, offer.CreatedBy?.FullName));
+
     private static OfferDraftDto MapToDraft(Offer offer)
     {
         return new OfferDraftDto
         {
             Id = offer.Id,
-            Reference = offer.Reference,
+            Reference = DisplayReference(offer),
+            OfferType = offer.OfferType,
             SerialNumber = offer.SerialNumber,
             Version = offer.Version,
             ParentOfferId = offer.ParentOfferId,
@@ -792,6 +816,7 @@ public class OfferService : IOfferService
         var draft = calculation.Draft;
 
         offer.Reference = draft.Reference.Trim();
+        offer.OfferType = draft.OfferType ?? OfferType.Loc;
         offer.SerialNumber = draft.SerialNumber;
         offer.Version = draft.Version <= 0 ? 1 : draft.Version;
         offer.ParentOfferId = draft.ParentOfferId;

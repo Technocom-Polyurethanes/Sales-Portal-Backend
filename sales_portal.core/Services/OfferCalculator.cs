@@ -24,7 +24,7 @@ public class OfferCalculator : IOfferCalculator
 
         var result = new OfferCalculateResponseDto { Draft = draft };
 
-        var referenceError = ReferenceRules.Validate(draft.Reference, draft.IssueDate);
+        var referenceError = ReferenceRules.Validate(draft.Reference, draft.OfferType);
         if (referenceError != null)
         {
             result.ValidationErrors.Add(referenceError);

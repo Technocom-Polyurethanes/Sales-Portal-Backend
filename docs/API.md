@@ -18,8 +18,8 @@ Base URL in local development: `https://localhost:8443`.
   readable `detail`. Field-keyed errors (settings, model binding) use an `errors`
   dictionary; offer validation uses the `errors` array.
 - Lists are 1-based and use `page` / `pageSize`.
-- Every field described below is **additive**. Existing fields, names and routes are
-  unchanged.
+- Fields are additive unless noted otherwise. The offer reference format and the
+  required `offerType` are documented under Offer reference rules.
 
 ## Offers
 
@@ -33,7 +33,7 @@ returned (`latestOnly=true`).
 | `search` | – | Matches reference, customer name (English/Arabic) and customer code. |
 | `status` | – | `Draft`, `Issued`, `Accepted`, `Rejected`, `Cancelled`; case-insensitive. An unknown value returns `400` ProblemDetails. |
 | `latestOnly` | `true` | `false` returns every stored version. |
-| `sortBy` | `id` | `id` (the printed offer number: issue month, serial, version), `updatedAt`, `createdAt`, `reference`, `total`, `issueDate`. |
+| `sortBy` | `id` | `id` (the printed offer number: issue date, serial, version), `updatedAt`, `createdAt`, `reference`, `total`, `issueDate`. |
 | `sortDir` | `asc` for `id`, `desc` otherwise | `asc` or `desc`. |
 | `page` | `1` | |
 | `pageSize` | `20` | |
@@ -43,7 +43,8 @@ returned (`latestOnly=true`).
   "items": [
     {
       "id": "8f4d0f37-2a9b-4a2b-9a6b-2d9b2b5a4f10",
-      "reference": "101/OCT./YL/AA",
+      "reference": "Loc/101/YL/JD",
+      "offerType": "Loc",
       "serialNumber": 101,
       "version": 2,
       "customerId": "a5c48d67-30f4-4ebf-88f5-7d8d9aef0c11",
@@ -82,7 +83,8 @@ Returns the full offer, including creator/modifier and document data.
 ```json
 {
   "id": "8f4d0f37-2a9b-4a2b-9a6b-2d9b2b5a4f10",
-  "reference": "101/OCT./YL/AA",
+  "reference": "Loc/101/YL/JD",
+  "offerType": "Loc",
   "serialNumber": 101,
   "version": 2,
   "parentOfferId": "1c4e45b0-f3b8-49a3-a1f4-2a5f9d4d7a10",
@@ -148,7 +150,8 @@ shape as the list response (including `versionsCount` and `lastModifiedByName`).
 [
   {
     "id": "8f4d0f37-2a9b-4a2b-9a6b-2d9b2b5a4f10",
-    "reference": "101/OCT./YL/AA",
+    "reference": "Loc/101/YL/JD",
+    "offerType": "Loc",
     "version": 2,
     "versionsCount": 2,
     "lastModifiedByName": "Modifier User",
@@ -156,7 +159,8 @@ shape as the list response (including `versionsCount` and `lastModifiedByName`).
   },
   {
     "id": "1c4e45b0-f3b8-49a3-a1f4-2a5f9d4d7a10",
-    "reference": "101/OCT./YL/AA",
+    "reference": "Loc/101/YL/JD",
+    "offerType": "Loc",
     "version": 1,
     "versionsCount": 2,
     "lastModifiedByName": "Test User",
@@ -168,30 +172,39 @@ shape as the list response (including `versionsCount` and `lastModifiedByName`).
 The example omits unchanged list fields for brevity; the real items contain all of
 them.
 
-### `GET /api/offers/next-sequence?year=2026&month=5`
+### `GET /api/offers/next-sequence?offerType=Loc`
 
-Suggests the next sequence and reference for a month. `year` and `month` default to the
-current UTC year and month.
+Suggests the next sequence and reference for the selected offer type. `offerType` is
+required and accepts `Loc` (local) or `Int` (international).
 
 ```json
 {
-  "suggestedSequence": 77,
-  "suggestedReference": "77/MAY/YL/AA"
+  "suggestedSequence": 43,
+  "suggestedReference": "Loc/43/YL/JD"
 }
 ```
 
-`suggestedReference` is built from the company's `referencePrefix` and the current
-user's initials. It is only a suggestion; the user still types the reference.
+The sequence is global: it starts at `1` when no offers exist and is one more than the
+highest number recorded so far, whether it was stored as a serial number or parsed from
+a reference. Legacy references such as `77/OCT./YL/AA` still contribute their first
+segment. `suggestedReference` uses `YL` and the current user's initials. It is only a
+suggestion; the user still types the reference.
 
 ### Offer create / update
 
 `POST /api/offers` and `PUT /api/offers/{id}` accept the offer draft. Request fields
-include `attentionAr`, `bankAccountIds` and the Arabic customer/bank fields described
-below.
+include `offerType`, `attentionAr`, `bankAccountIds` and the Arabic customer/bank fields
+described below.
+
+`offerType` is required and accepts `Loc` (local) or `Int` (international). When
+`reference` is empty on create, the server generates one as
+`{offerType}/{sequence}/YL/{initials}`. On update an omitted `reference` keeps the
+stored one.
 
 ```json
 {
-  "reference": "100/OCT./YL/AA",
+  "reference": "Loc/100/YL/JD",
+  "offerType": "Loc",
   "version": 1,
   "customerId": "a5c48d67-30f4-4ebf-88f5-7d8d9aef0c11",
   "attention": "Nader William",
@@ -237,34 +250,39 @@ the reference changes. Versions are grouped by `rootOfferId`, not by `reference`
 A reference must follow:
 
 ```text
-<sequence>/<month>/<prefix>/<initials>
+<offerType>/<sequence>/YL/<initials>
 ```
 
+- `offerType` is `Loc` or `Int` and must match the offer's `offerType`.
 - `sequence` is one or more digits.
-- `month` is `JAN.`, `FEB.`, `MAR.`, `APR.`, `MAY`, `JUN.`, `JUL.`, `AUG.`, `SEP.`,
-  `OCT.`, `NOV.` or `DEC.`. Only `MAY` has no period.
-- Month matching is case-insensitive (`oct.` is accepted).
-- `prefix` and `initials` use letters, digits, `_` or `-`.
+- `YL` is the static company identifier.
+- `initials` is one or more letters or digits. The server uses the authenticated
+  user's stored `initials`, falling back to the first letters of their full name, and
+  prints it in uppercase.
 
-The month segment must match the offer's `issueDate` month. A malformed reference or a
-month mismatch is returned through the offer validation shape:
+Matching is case-insensitive. A malformed reference, a reference whose type does not
+match the offer type, or a missing `offerType` is returned through the offer
+validation shape:
 
 ```json
 {
   "type": "https://httpstatuses.io/400",
   "title": "One or more validation errors occurred.",
   "status": 400,
-  "detail": "Reference month (OCT.) does not match the issue date month (NOV.).",
+  "detail": "Reference must start with 'Loc' to match the offer type.",
   "message": "Offer validation failed.",
   "errors": [
-    "Reference month (OCT.) does not match the issue date month (NOV.)."
+    "Reference must start with 'Loc' to match the offer type."
   ],
   "warnings": []
 }
 ```
 
-The exact month-mismatch message is
-`Reference month (OCT.) does not match the issue date month (NOV.).`
+The validation messages are:
+
+- `Offer type is required.`
+- `Reference must follow the format Loc/42/YL/JD.`
+- `Reference must start with 'Loc' to match the offer type.`
 
 ### Saving an offer (two calls)
 
@@ -684,8 +702,15 @@ The paged commit log, newest first. Only committed imports are listed.
   upsert payloads.
 - Settings: new `workspace.bankAccounts` on GET and PUT, with Arabic bank fields.
 - New API documentation covers the additive fields and JSON shapes below.
-- Offer next-sequence: `suggestedReference` is documented and always uses the same
-  month rules as offer validation.
+- Offer list and detail: new `offerType` (`Loc` or `Int`).
+- Offer draft: `offerType` is now required. `reference` is optional on create (the
+  server generates it) and keeps the stored value when omitted on update.
+- Offer references now use `{offerType}/{sequence}/YL/{initials}`. The month segment
+  was removed and `initials` comes from the authenticated user.
+- Offer next-sequence: `offerType` query parameter; the `year` and `month` parameters
+  were removed.
+- Offer next-sequence: `suggestedReference` always follows the same rules as offer
+  validation.
 - Data import: new `/api/import/templates/{type}`, `/api/import/{type}/preview`,
   `/api/import/{importId}/commit` and `/api/import/history` routes; new
   `import_batches` table. Import types: `customers`, `materials`, `prices` and
@@ -695,4 +720,6 @@ The paged commit log, newest first. Only committed imports are listed.
 - Offer detail and draft: new `bankAccountIds` (`Guid[] | null`) and `bank_account_ids`
   column on `offers`; the printed document lists only the selected accounts.
 
-Nothing was removed, renamed or made required that was previously optional.
+Nothing else was removed or renamed. The only breaking change is the offer reference
+format and the required `offerType`; the next-sequence `year`/`month` parameters are
+replaced by `offerType`.

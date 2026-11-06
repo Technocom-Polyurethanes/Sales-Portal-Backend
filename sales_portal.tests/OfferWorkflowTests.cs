@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.Services;
 using sales_portal.domain.Enums;
@@ -91,7 +92,7 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // October reference with a November issue date and no lines.
+            // No lines: issuing must fail on that alone.
             id = TestFactory.AddOffer(
                 db,
                 new SeededBasics(seed.User, seed.User, seed.Customer, seed.PaymentTerm),
@@ -105,7 +106,6 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         var problem = await ReadJsonAsync(response);
         var detail = problem.GetProperty("detail").GetString();
-        Assert.Contains("does not match the issue date month (NOV.)", detail);
         Assert.Contains("At least one line is required", detail);
         Assert.Equal(JsonValueKind.Array, problem.GetProperty("errors").ValueKind);
 
@@ -140,19 +140,70 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
     }
 
     [Fact]
-    public async Task A_new_offer_cannot_take_the_reference_of_another_offer()
+    public async Task A_reference_sent_by_the_client_is_ignored_and_the_server_numbers_the_offer()
     {
         var seed = await SeedAsync();
         using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
-        var taken = NextReference();
-        await CreateDraftAsync(client, BuildPayload(seed, taken));
-        var otherId = await CreateDraftAsync(client, BuildPayload(seed, NextReference()));
 
-        var payload = BuildPayload(seed, taken);
-        payload["parentOfferId"] = otherId;
-        var response = await client.PostAsJsonAsync("/api/offers", payload);
+        var first = await CreateAndReadAsync(client, BuildPayload(seed, "Loc/999/YL/ZZ"));
+        var second = await CreateAndReadAsync(client, BuildPayload(seed, "Loc/999/YL/ZZ"));
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.True(ReferenceRules.TryParse(first.GetProperty("reference").GetString(), out var type, out var firstSequence, out var initials));
+        Assert.Equal(OfferType.Loc, type);
+        Assert.Equal("TU", initials);
+        Assert.True(ReferenceRules.TryParse(second.GetProperty("reference").GetString(), out _, out var secondSequence, out _));
+        Assert.Equal(firstSequence + 1, secondSequence);
+    }
+
+    [Fact]
+    public async Task Only_the_first_offer_can_choose_its_sequence_and_numbering_continues_from_it()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+
+        // The tests of this class share one database, so start from an empty offers table.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Offers.RemoveRange(await db.Offers.ToListAsync());
+            await db.SaveChangesAsync();
+        }
+
+        var next = await ReadJsonAsync(await client.GetAsync("/api/offers/next-sequence?offerType=Loc"));
+        Assert.True(next.GetProperty("isFirstOffer").GetBoolean());
+
+        var payload = BuildPayload(seed, "ignored");
+        payload["serialNumber"] = 3090;
+        var first = await CreateAndReadAsync(client, payload);
+
+        var laterPayload = BuildPayload(seed, "ignored");
+        laterPayload["serialNumber"] = 9000;
+        var second = await CreateAndReadAsync(client, laterPayload);
+
+        Assert.Equal("Loc/3090/YL/TU", first.GetProperty("reference").GetString());
+        // A later offer cannot pick its number; it continues from the first one.
+        Assert.Equal("Loc/3091/YL/TU", second.GetProperty("reference").GetString());
+
+        next = await ReadJsonAsync(await client.GetAsync("/api/offers/next-sequence?offerType=Loc"));
+        Assert.False(next.GetProperty("isFirstOffer").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Changing_the_offer_type_rewrites_only_the_type_segment_of_the_reference()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var created = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
+        var id = created.GetProperty("id").GetGuid();
+        ReferenceRules.TryParse(created.GetProperty("reference").GetString(), out _, out var sequence, out _);
+
+        var payload = BuildPayload(seed, "Loc/1/YL/ZZ");
+        payload["offerType"] = "Int";
+        var response = await client.PutAsJsonAsync($"/api/offers/{id}", payload);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await ReadJsonAsync(response);
+        Assert.Equal($"Int/{sequence}/YL/TU", updated.GetProperty("reference").GetString());
     }
 
     [Fact]
@@ -171,21 +222,6 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         var metadata = detail.GetProperty("document").GetProperty("metadata");
         Assert.Equal(14, metadata.GetProperty("validityDays").GetInt32());
         Assert.Equal("2026-11-04", metadata.GetProperty("expiryDate").GetString());
-    }
-
-    [Fact]
-    public async Task Duplicate_reference_and_version_returns_409_with_a_readable_detail()
-    {
-        var seed = await SeedAsync();
-        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
-        var reference = NextReference();
-        await CreateDraftAsync(client, BuildPayload(seed, reference));
-
-        var response = await client.PostAsJsonAsync("/api/offers", BuildPayload(seed, reference));
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("already exists", (await ReadJsonAsync(response)).GetProperty("detail").GetString());
     }
 
     [Fact]
@@ -249,7 +285,7 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
             await db.PackageTypes.AsNoTracking().FirstAsync(p => p.Name == "Drum"));
     }
 
-    private static string NextReference() => $"{Interlocked.Increment(ref _sequence)}/OCT./YL/TU";
+    private static string NextReference() => $"Loc/{Interlocked.Increment(ref _sequence)}/YL/TU";
 
     private static Dictionary<string, object?> BuildPayload(Seed seed, string reference)
         => BuildPayload(seed, reference, out _, out _);
@@ -268,6 +304,7 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         return new Dictionary<string, object?>
         {
             ["reference"] = reference,
+            ["offerType"] = "Loc",
             ["version"] = 1,
             ["customerId"] = seed.Customer.Id,
             ["attention"] = "Nader William",
@@ -325,6 +362,13 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
                 }
             }
         };
+    }
+
+    private static async Task<JsonElement> CreateAndReadAsync(HttpClient client, Dictionary<string, object?> payload)
+    {
+        var response = await client.PostAsJsonAsync("/api/offers", payload);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return await ReadJsonAsync(response);
     }
 
     private static async Task<Guid> CreateDraftAsync(HttpClient client, Dictionary<string, object?> payload)
@@ -475,7 +519,8 @@ public class OfferIdRelinkTests
             params (Guid LineId, Material Material, (Guid PackagingId, int Packages)[] Packaging)[] lines)
             => new()
             {
-                Reference = "100/OCT./YL/AA",
+                Reference = "Loc/100/YL/AA",
+                OfferType = OfferType.Loc,
                 IssueDate = new DateOnly(2026, 10, 21),
                 CustomerId = Guid.NewGuid(),
                 PaymentTermId = Term.Id,
