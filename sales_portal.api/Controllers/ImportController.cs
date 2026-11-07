@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.api.Authorization;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -9,7 +10,7 @@ namespace sales_portal.api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize]
+[Authorize(Policy = Policies.Import)]
 public class ImportController : ControllerBase
 {
     private readonly IImportService _importService;
@@ -29,7 +30,6 @@ public class ImportController : ControllerBase
     }
 
     [HttpPost("{type}/preview")]
-    [Authorize(Roles = "Admin")]
     [RequestSizeLimit(6_000_000)]
     public async Task<ActionResult<ImportPreviewDto>> Preview(
         string type,
@@ -52,7 +52,6 @@ public class ImportController : ControllerBase
     }
 
     [HttpPost("{importId:guid}/commit")]
-    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<ImportCommitResultDto>> Commit(
         Guid importId,
         CancellationToken cancellationToken)

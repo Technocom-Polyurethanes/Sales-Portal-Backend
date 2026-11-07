@@ -18,7 +18,7 @@ namespace sales_portal.domain.Models
         public string? Team { get; set; }                          // "Sales team"
         public string? TeamAr { get; set; }
         public string PasswordHash { get; set; } = default!;      // BCrypt
-        public UserRole Role { get; set; } = UserRole.SalesUser;
+        public UserRole Role { get; set; } = UserRole.Sales;
         public bool IsActive { get; set; } = true;
 
         public ICollection<Offer> Offers { get; set; } = new List<Offer>();

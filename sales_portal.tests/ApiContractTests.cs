@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
@@ -10,6 +10,8 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
+using sales_portal.domain.Enums;
+using sales_portal.domain.Models;
 using sales_portal.infrastructure.Contexts;
 using Xunit;
 
@@ -92,12 +94,58 @@ public sealed class SalesPortalApiFactory : WebApplicationFactory<Program>
         });
     }
 
+    /// <summary>
+    /// A client signed in as <paramref name="userId"/>. Tokens are only accepted for users that exist
+    /// and are active, so the user is created here when the id is new.
+    /// </summary>
     public HttpClient CreateAuthenticatedClient(Guid? userId = null, string role = "Admin")
+    {
+        var id = userId ?? Guid.NewGuid();
+        EnsureUser(id, Enum.Parse<UserRole>(role));
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", CreateToken(id, role));
+        return client;
+    }
+
+    /// <summary>Adds a user to the test database and returns its id.</summary>
+    public Guid SeedUser(UserRole role, bool isActive = true)
+    {
+        var id = Guid.NewGuid();
+        EnsureUser(id, role, isActive);
+        return id;
+    }
+
+    /// <summary>A token for an existing user whose claimed role may differ from the stored one.</summary>
+    public HttpClient CreateClientWithToken(Guid userId, string tokenRole)
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", CreateToken(userId ?? Guid.NewGuid(), role));
+            new AuthenticationHeaderValue("Bearer", CreateToken(userId, tokenRole));
         return client;
+    }
+
+    private void EnsureUser(Guid id, UserRole role, bool isActive = true)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (db.Users.Any(u => u.Id == id))
+        {
+            return;
+        }
+
+        db.Users.Add(new User
+        {
+            Id = id,
+            Username = $"test-{id:N}",
+            FullName = "Test User",
+            Initials = "TU",
+            PasswordHash = "not-used",
+            Role = role,
+            IsActive = isActive
+        });
+        db.SaveChanges();
     }
 
     private static string CreateToken(Guid userId, string role)

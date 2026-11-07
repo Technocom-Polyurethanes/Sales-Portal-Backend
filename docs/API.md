@@ -21,6 +21,25 @@ Base URL in local development: `https://localhost:8443`.
 - Fields are additive unless noted otherwise. The offer reference format and the
   required `offerType` are documented under Offer reference rules.
 
+## Roles and permissions
+
+Every user has exactly one role, returned as `role` by `POST /api/auth/login` and
+`GET /api/auth/me`. The role is read from the database on every request (not from the
+token), so a role change or a deactivation applies immediately; a token of a deactivated
+or deleted user returns `401`. A role the user lacks returns `403` ProblemDetails.
+
+| Capability | Admin | Sales | Accountant |
+| --- | :---: | :---: | :---: |
+| View offers, customers (with history), materials, bank accounts | yes | yes | yes |
+| Create, edit, revise and change the status of offers | yes | yes | read only |
+| Create a customer, material or bank account | yes | yes | yes |
+| Edit an existing customer, material or bank account | yes | no | yes |
+| Data import (templates, preview, commit, history) | yes | no | yes |
+| Company settings (`PUT /api/settings`) | yes | no | no |
+| Users (`/api/users`) | yes | no | no |
+
+The matrix lives in one file, `sales_portal.api/Authorization/Policies.cs`.
+
 ## Offers
 
 ### `GET /api/offers`
@@ -426,7 +445,9 @@ Query: `search` (bank, branch or account number), `currency`, `isActive`, `page`
 
 `GET /api/banks/{id}` returns the same shape or `404`.
 
-### `POST /api/banks` and `PUT /api/banks/{id}` (Admin)
+### `POST /api/banks` and `PUT /api/banks/{id}`
+
+Create: Admin, Sales and Accountant. Edit: Admin and Accountant.
 
 Accept the account fields without `id`. `bank`, `branch` and `accountNumber` are
 required. A missing or zero `sortOrder` is appended to the end of the list. There is
@@ -614,7 +635,7 @@ the exact template of that type. `Content-Disposition` names it
 
 Header matching is case-insensitive and trimmed. Unknown columns are ignored.
 
-### `POST /api/import/{type}/preview` (Admin)
+### `POST /api/import/{type}/preview` (Admin, Accountant)
 
 `multipart/form-data` with one `file` part: a `.xlsx` (first worksheet) or `.csv`
 file. Limits: 5 MB and 5,000 data rows. Rows that are completely empty are ignored.
@@ -684,7 +705,7 @@ Validation rules:
   defaults to `EGP`, `isActive` to `true` and an empty `sortOrder` to the highest
   existing order plus the row position in the file (new rows only).
 
-### `POST /api/import/{importId}/commit` (Admin)
+### `POST /api/import/{importId}/commit` (Admin, Accountant)
 
 Applies every row that is not an error in one transaction. Records are upserted by
 `CustomerCode` / `ItemCode`, falling back to `ErpNextId` / `ErpNextItemCode`; bank
@@ -733,6 +754,48 @@ The paged commit log, newest first. Only committed imports are listed.
 }
 ```
 
+## Users (Admin)
+
+Admin only. There is no delete endpoint: offers keep the user that created them, so an
+account is deactivated with `isActive: false` instead. A deactivated user cannot sign in
+and their existing token stops working on the next request.
+
+`UserDto`: `id`, `username`, `fullName`, `initials`, `email`, `role` (`Admin`, `Sales` or
+`Accountant`), `roleTitle`, `roleTitleAr`, `team`, `teamAr`, `isActive`, `createdAt`,
+`updatedAt`. The password hash is never returned.
+
+### `GET /api/users`
+
+| Query parameter | Default | Notes |
+| --- | --- | --- |
+| `search` | – | Matches username, full name and email. |
+| `role` | – | `Admin`, `Sales` or `Accountant`. |
+| `isActive` | – | `true` or `false`. |
+| `page` | `1` | |
+| `pageSize` | `12` | Maximum 100. |
+
+Returns the usual `{ items, page, pageSize, totalCount, totalPages }` envelope, ordered by
+full name. `GET /api/users/{id}` returns one `UserDto` or `404`.
+
+### `POST /api/users`
+
+Body: `username` (3-50 letters, digits, `.`, `-`, `_`; unique ignoring case), `fullName`,
+`initials` (1-6 letters or digits, printed in offer references, stored upper case),
+`role` (required), `password` (8 to 72 bytes), and optional `email`, `roleTitle`,
+`roleTitleAr`, `team`, `teamAr`, `isActive` (default `true`). Returns `201` with the
+`UserDto`. Invalid input returns `400` with an `errors` dictionary keyed by field name.
+
+### `PUT /api/users/{id}`
+
+Same fields except `username` and `password`, which do not change here. When `isActive`
+is omitted the current value is kept. Returns `409` when the change would deactivate or
+demote yourself, or would leave the system without an active administrator.
+
+### `POST /api/users/{id}/reset-password`
+
+Body: `{ "newPassword": "..." }`. Returns `204`. Users change their own password with
+`POST /api/auth/change-password`.
+
 ## Additive contract summary
 
 - Offer list: new `latestOnly`, `sortBy`, `sortDir` query parameters; new
@@ -764,6 +827,14 @@ The paged commit log, newest first. Only committed imports are listed.
   by `accountNumber`.
 - Offer detail and draft: new `bankAccountIds` (`Guid[] | null`) and `bank_account_ids`
   column on `offers`; the printed document lists only the selected accounts.
+
+- Roles: `UserRole` is now `Admin`, `Sales`, `Accountant`. `SalesUser` was renamed to
+  `Sales` and keeps its stored value (1), so no data migration is needed. New `/api/users`
+  routes (see Users). Customer, material, bank account, offer, import and settings
+  endpoints now follow the role matrix above; a Sales user can no longer edit an existing
+  customer or material.
+- Offers already return `createdByName` and `createdAt` (list and detail), which the
+  frontend now displays.
 
 Nothing else was removed or renamed. The only breaking change is the offer reference
 format and the required `offerType`; the next-sequence `year`/`month` parameters are

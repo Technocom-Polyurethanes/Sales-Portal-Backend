@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.api.Authorization;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -24,7 +25,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPut]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = Policies.SettingsWrite)]
     public async Task<ActionResult<SettingsDto>> Update(
         [FromBody] UpdateSettingsDto request,
         CancellationToken cancellationToken)

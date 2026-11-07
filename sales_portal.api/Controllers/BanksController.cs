@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.api.Authorization;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -45,7 +46,7 @@ public class BanksController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = Policies.CatalogCreate)]
     public async Task<ActionResult<BankAccountDto>> CreateBank(
         [FromBody] UpsertBankAccountDto request,
         CancellationToken cancellationToken)
@@ -55,7 +56,7 @@ public class BanksController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = Policies.CatalogEdit)]
     public async Task<ActionResult<BankAccountDto>> UpdateBank(
         Guid id,
         [FromBody] UpsertBankAccountDto request,

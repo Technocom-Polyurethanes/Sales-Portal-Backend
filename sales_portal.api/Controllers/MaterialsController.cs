@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.api.Authorization;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -62,6 +63,7 @@ public class MaterialsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = Policies.CatalogCreate)]
     public async Task<ActionResult<MaterialDto>> CreateMaterial(
         [FromBody] UpsertMaterialDto request,
         CancellationToken cancellationToken)
@@ -71,6 +73,7 @@ public class MaterialsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = Policies.CatalogEdit)]
     public async Task<ActionResult<MaterialDto>> UpdateMaterial(
         Guid id,
         [FromBody] UpsertMaterialDto request,
