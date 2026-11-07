@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.api.Authorization;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -64,6 +65,7 @@ public class CustomersController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = Policies.CatalogCreate)]
     public async Task<ActionResult<CustomerDetailDto>> CreateCustomer(
         [FromBody] UpsertCustomerDto request,
         CancellationToken cancellationToken)
@@ -73,6 +75,7 @@ public class CustomersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = Policies.CatalogEdit)]
     public async Task<ActionResult<CustomerDetailDto>> UpdateCustomer(
         Guid id,
         [FromBody] UpsertCustomerDto request,

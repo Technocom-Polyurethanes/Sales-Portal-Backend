@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using sales_portal.api.Authorization;
 using sales_portal.api.Middleware;
 using sales_portal.core.Caching;
 using sales_portal.core.Configuration;
@@ -87,6 +88,7 @@ builder.Services.AddScoped<IOfferCalculator, OfferCalculator>();
 builder.Services.AddScoped<IOfferDocumentBuilder, OfferDocumentBuilder>();
 builder.Services.AddScoped<IOfferService, OfferService>();
 builder.Services.AddScoped<IImportService, ImportService>();
+builder.Services.AddScoped<IUserService, UserService>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
@@ -134,6 +136,12 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1)
         };
+
+        // Deactivated users and role changes apply on the next request, not when the token expires.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = ActiveUserTokenValidator.OnTokenValidated
+        };
     });
 
 // 1. Register CORS before builder.Build()
@@ -168,7 +176,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(Policies.Register);
 
 var app = builder.Build();
 

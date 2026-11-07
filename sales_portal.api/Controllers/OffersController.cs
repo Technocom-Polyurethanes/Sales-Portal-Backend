@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.api.Authorization;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -21,6 +22,7 @@ public class OffersController : ControllerBase
     }
 
     [HttpPost("calculate")]
+    [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferCalculateResponseDto>> Calculate(
         [FromBody] OfferDraftDto request,
         CancellationToken cancellationToken)
@@ -38,6 +40,7 @@ public class OffersController : ControllerBase
     }
 
     [HttpGet("next-sequence")]
+    [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferNextSequenceDto>> GetNextSequence(
         [FromQuery] OfferType? offerType,
         CancellationToken cancellationToken)
@@ -77,6 +80,7 @@ public class OffersController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> CreateOffer(
         [FromBody] OfferDraftDto request,
         CancellationToken cancellationToken)
@@ -92,6 +96,7 @@ public class OffersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> UpdateOffer(
         Guid id,
         [FromBody] OfferDraftDto request,
@@ -107,6 +112,7 @@ public class OffersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/revise")]
+    [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> ReviseOffer(
         Guid id,
         CancellationToken cancellationToken)
@@ -122,6 +128,7 @@ public class OffersController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/status")]
+    [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> UpdateStatus(
         Guid id,
         [FromBody] UpdateOfferStatusDto request,
