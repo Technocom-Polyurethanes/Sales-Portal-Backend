@@ -1,6 +1,8 @@
 using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
+using sales_portal.domain.Enums;
+using sales_portal.domain.Models;
 
 namespace sales_portal.core.Services;
 
@@ -163,6 +165,11 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
                 })
                 .ToList(),
             Notes = draft.Notes,
+            DeliveryMode = draft.DeliveryMode,
+            DeliveryText = draft.DeliveryMode == OfferDeliveryMode.Text ? draft.DeliveryText : null,
+            DeliveryPlace = draft.DeliveryPlace,
+            PaymentTermsText = draft.PaymentTermsText,
+            TermsAndConditions = OfferTerms.For(draft.DocumentLanguage),
             Language = draft.DocumentLanguage,
             Currency = draft.Currency,
             FormCode = formCode,

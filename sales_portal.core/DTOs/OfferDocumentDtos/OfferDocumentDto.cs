@@ -13,6 +13,12 @@ public class OfferDocumentDto
     public DocumentDeliveryTotalsRowDto DeliveryTotals { get; set; } = new();
     public List<DocumentBankAccountDto> BankAccounts { get; set; } = new();
     public string? Notes { get; set; }
+    public OfferDeliveryMode DeliveryMode { get; set; }
+    public string? DeliveryText { get; set; }
+    public string? DeliveryPlace { get; set; }
+    public string? PaymentTermsText { get; set; }
+    /// <summary>The fixed terms and conditions printed on every offer, in the document language.</summary>
+    public List<string> TermsAndConditions { get; set; } = new();
     public DocumentLanguage Language { get; set; }
     public string Currency { get; set; } = "EGP";
     public string FormCode { get; set; } = string.Empty;

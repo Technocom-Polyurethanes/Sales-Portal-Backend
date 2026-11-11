@@ -3,6 +3,7 @@ using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 using sales_portal.domain.Enums;
+using sales_portal.domain.Models;
 
 namespace sales_portal.core.Services;
 
@@ -23,6 +24,8 @@ public class OfferCalculator : IOfferCalculator
         var replacedIds = NormalizeIds(draft);
 
         var result = new OfferCalculateResponseDto { Draft = draft };
+
+        NormalizeDeliveryAndTextBlocks(draft, result);
 
         var referenceError = ReferenceRules.Validate(draft.Reference, draft.OfferType);
         if (referenceError != null)
@@ -367,6 +370,42 @@ public class OfferCalculator : IOfferCalculator
     // Replaces empty/duplicate ids and returns (original line id, original packaging id) ->
     // final ids. Pairs that are empty or still ambiguous (both ids duplicated) are not mapped
     // and fall back to the material/package type matching below.
+    /// <summary>
+    /// Keeps the delivery description consistent with its mode and trims the free-text blocks.
+    /// Batches mode drops any leftover text, Text mode drops any scheduled batches, so an offer never
+    /// prints two conflicting delivery descriptions. Completeness is checked when the offer is issued.
+    /// </summary>
+    private static void NormalizeDeliveryAndTextBlocks(OfferDraftDto draft, OfferCalculateResponseDto result)
+    {
+        draft.DeliveryText = NullIfBlank(draft.DeliveryText);
+        draft.DeliveryPlace = NullIfBlank(draft.DeliveryPlace);
+        draft.PaymentTermsText = NullIfBlank(draft.PaymentTermsText);
+
+        if (draft.DeliveryMode == OfferDeliveryMode.Text)
+        {
+            draft.DeliveryBatches.Clear();
+        }
+        else
+        {
+            draft.DeliveryText = null;
+        }
+
+        AddLengthError(result, draft.DeliveryText, OfferTextLimits.DeliveryText, "Delivery text");
+        AddLengthError(result, draft.DeliveryPlace, OfferTextLimits.DeliveryPlace, "Delivery place");
+        AddLengthError(result, draft.PaymentTermsText, OfferTextLimits.PaymentTermsText, "Payment terms text");
+    }
+
+    private static string? NullIfBlank(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static void AddLengthError(OfferCalculateResponseDto result, string? value, int maxLength, string label)
+    {
+        if (value is { } text && text.Length > maxLength)
+        {
+            result.ValidationErrors.Add($"{label} must be {maxLength} characters or fewer.");
+        }
+    }
+
     private static Dictionary<(Guid LineId, Guid PackagingId), (Guid LineId, Guid PackagingId)> NormalizeIds(
         OfferDraftDto draft)
     {
