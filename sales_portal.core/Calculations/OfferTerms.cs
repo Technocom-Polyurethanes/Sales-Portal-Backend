@@ -10,13 +10,11 @@ public static class OfferTerms
 {
     private static readonly string[] Arabic =
     {
-        "برجاء إرسال مندوبكم بتفويض معتمد ومختوم لمصانعنا بمدينة بدر لإستلام الخامات فى المواعيد المحددة.",
         "تنطبق شروط القوى القهرية على العرض بعاليه."
     };
 
     private static readonly string[] English =
     {
-        "Please send your representative, holding an authorised and stamped letter, to our factories in Badr City to collect the materials on the agreed dates.",
         "Force majeure conditions apply to this offer."
     };
 

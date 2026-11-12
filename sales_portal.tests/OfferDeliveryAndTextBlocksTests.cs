@@ -77,7 +77,7 @@ public class OfferDeliveryAndTextBlocksTests
 
         var result = Calculate(draft);
 
-        Assert.Equal(2, result.Document.TermsAndConditions.Count);
+        Assert.Single(result.Document.TermsAndConditions);
         Assert.Contains(result.Document.TermsAndConditions, term => term.Contains(expectedFragment));
     }
 
