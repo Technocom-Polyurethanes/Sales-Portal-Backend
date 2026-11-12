@@ -36,6 +36,10 @@ namespace sales_portal.domain.Models
         public string Currency { get; set; } = "EGP";
         public DocumentLanguage DocumentLanguage { get; set; } = DocumentLanguage.En;
         public string? Notes { get; set; }
+        public OfferDeliveryMode DeliveryMode { get; set; } = OfferDeliveryMode.Batches;
+        public string? DeliveryText { get; set; }                  // free wording, used only when DeliveryMode is Text
+        public string? DeliveryPlace { get; set; }                 // where the goods are handed over, printed as its own block
+        public string? PaymentTermsText { get; set; }              // extra payment conditions (2-4 lines), printed in the payment terms block
         public string FormCode { get; set; } = "TF-06-01A";
         public OfferStatus Status { get; set; } = OfferStatus.Draft;
 

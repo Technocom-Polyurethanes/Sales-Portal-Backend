@@ -27,6 +27,12 @@ public class OfferDraftDto
     public string Currency { get; set; } = "EGP";
     public DocumentLanguage DocumentLanguage { get; set; } = DocumentLanguage.En;
     public string? Notes { get; set; }
+    /// <summary>Batches uses <see cref="DeliveryBatches"/>, Text uses <see cref="DeliveryText"/> instead.</summary>
+    public OfferDeliveryMode DeliveryMode { get; set; } = OfferDeliveryMode.Batches;
+    public string? DeliveryText { get; set; }
+    public string? DeliveryPlace { get; set; }
+    /// <summary>Extra payment conditions printed under the selected payment term.</summary>
+    public string? PaymentTermsText { get; set; }
     public string? FormCode { get; set; }
     public OfferStatus Status { get; set; } = OfferStatus.Draft;
 

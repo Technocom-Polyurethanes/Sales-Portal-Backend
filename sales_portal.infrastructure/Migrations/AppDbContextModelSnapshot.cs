@@ -449,6 +449,22 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("customer_id");
 
+                    b.Property<string>("DeliveryMode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("delivery_mode");
+
+                    b.Property<string>("DeliveryPlace")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("delivery_place");
+
+                    b.Property<string>("DeliveryText")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("delivery_text");
+
                     b.Property<int>("DocumentLanguage")
                         .HasColumnType("integer")
                         .HasColumnName("document_language");
@@ -502,6 +518,11 @@ namespace sales_portal.infrastructure.Migrations
                     b.Property<Guid>("PaymentTermId")
                         .HasColumnType("uuid")
                         .HasColumnName("payment_term_id");
+
+                    b.Property<string>("PaymentTermsText")
+                        .HasMaxLength(800)
+                        .HasColumnType("character varying(800)")
+                        .HasColumnName("payment_terms_text");
 
                     b.Property<string>("Reference")
                         .IsRequired()

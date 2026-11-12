@@ -557,6 +557,12 @@ public class OfferService : IOfferService
             calculation.ValidationErrors.Add("At least one line is required to issue an offer.");
         }
 
+        if (calculation.Draft.DeliveryMode == OfferDeliveryMode.Text
+            && string.IsNullOrWhiteSpace(calculation.Draft.DeliveryText))
+        {
+            calculation.ValidationErrors.Add("Delivery text is required to issue an offer with text delivery.");
+        }
+
         ThrowIfInvalid(calculation);
     }
 
@@ -679,6 +685,10 @@ public class OfferService : IOfferService
             Currency = offer.Currency,
             DocumentLanguage = offer.DocumentLanguage,
             Notes = offer.Notes,
+            DeliveryMode = offer.DeliveryMode,
+            DeliveryText = offer.DeliveryText,
+            DeliveryPlace = offer.DeliveryPlace,
+            PaymentTermsText = offer.PaymentTermsText,
             FormCode = offer.FormCode,
             Status = offer.Status,
             BankAccountIds = offer.BankAccountIds,
@@ -740,6 +750,10 @@ public class OfferService : IOfferService
             Currency = offer.Currency,
             DocumentLanguage = offer.DocumentLanguage,
             Notes = offer.Notes,
+            DeliveryMode = offer.DeliveryMode,
+            DeliveryText = offer.DeliveryText,
+            DeliveryPlace = offer.DeliveryPlace,
+            PaymentTermsText = offer.PaymentTermsText,
             FormCode = offer.FormCode,
             Status = offer.Status,
             BankAccountIds = offer.BankAccountIds,
@@ -834,6 +848,10 @@ public class OfferService : IOfferService
         offer.Currency = draft.Currency;
         offer.DocumentLanguage = draft.DocumentLanguage;
         offer.Notes = draft.Notes;
+        offer.DeliveryMode = draft.DeliveryMode;
+        offer.DeliveryText = draft.DeliveryText;
+        offer.DeliveryPlace = draft.DeliveryPlace;
+        offer.PaymentTermsText = draft.PaymentTermsText;
         offer.FormCode = calculation.Document.FormCode;
         offer.Status = draft.Status;
         offer.BankAccountIds = draft.BankAccountIds;

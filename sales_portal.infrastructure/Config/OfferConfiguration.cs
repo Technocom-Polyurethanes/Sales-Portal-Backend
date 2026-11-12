@@ -20,6 +20,16 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
             .HasMaxLength(3)
             .IsRequired();
 
+        // Stored as "Batches" / "Text", the same values the API uses.
+        builder.Property(o => o.DeliveryMode)
+            .HasConversion<string>()
+            .HasMaxLength(10)
+            .IsRequired();
+
+        builder.Property(o => o.DeliveryText).HasMaxLength(OfferTextLimits.DeliveryText);
+        builder.Property(o => o.DeliveryPlace).HasMaxLength(OfferTextLimits.DeliveryPlace);
+        builder.Property(o => o.PaymentTermsText).HasMaxLength(OfferTextLimits.PaymentTermsText);
+
         // The reference may change between versions, so a version is identified by its chain.
         builder.HasIndex(o => new { o.RootOfferId, o.Version })
             .IsUnique();

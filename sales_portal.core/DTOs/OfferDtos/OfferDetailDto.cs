@@ -29,6 +29,10 @@ public class OfferDetailDto
     public string Currency { get; set; } = "EGP";
     public DocumentLanguage DocumentLanguage { get; set; }
     public string? Notes { get; set; }
+    public OfferDeliveryMode DeliveryMode { get; set; }
+    public string? DeliveryText { get; set; }
+    public string? DeliveryPlace { get; set; }
+    public string? PaymentTermsText { get; set; }
     public string FormCode { get; set; } = string.Empty;
     public OfferStatus Status { get; set; }
 
