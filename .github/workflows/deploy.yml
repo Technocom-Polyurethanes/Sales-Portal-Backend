@@ -110,6 +110,12 @@ jobs:
             }
           }
 
+          # The live app keeps its DLLs locked while it serves requests, which used to make the
+          # sync fail until the server was restarted by hand. -enableRule:AppOffline uploads an
+          # app_offline.htm first, so IIS stops the app and releases the files, and removes it
+          # again once the sync finishes. -retryAttempts/-retryInterval retry a file that is
+          # still locked for a moment (5 tries, 15 s apart).
+          #
           # msdeploy parses its own quotes inside each argument. PowerShell 7.3+ re-escapes
           # embedded quotes by default, which msdeploy rejects ("Unrecognized argument"),
           # so pass native arguments through verbatim.
@@ -123,6 +129,9 @@ jobs:
             "-source:contentPath=`"$source`"" `
             "-dest:contentPath=`"$($env:MONSTER_SITE)`",computerName=`"$computer`",userName=`"$($env:MONSTER_USER)`",password=`"$($env:MONSTER_PASSWORD)`",authtype=`"Basic`",includeAcls=`"False`"" `
             -allowUntrusted `
+            -enableRule:AppOffline `
+            -retryAttempts:5 `
+            -retryInterval:15000 `
             -disableLink:AppPoolExtension `
             -disableLink:ContentExtension `
             -disableLink:CertificateExtension `
