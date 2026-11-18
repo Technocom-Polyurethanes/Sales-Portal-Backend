@@ -171,4 +171,64 @@ public class OfferListTests
         Assert.Equal(2, revised.Version);
         Assert.Equal(new DateOnly(2026, 10, 15), revised.IssueDate);
     }
+
+    [Fact]
+    public async Task ReviseAsync_by_another_user_keeps_the_creator_and_only_changes_the_editor()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var revised = await service.ReviseAsync(v1.Id, basics.SecondUser.Id, CancellationToken.None);
+
+        Assert.Equal(basics.User.Id, revised.CreatedByUserId);
+        Assert.Equal(basics.User.FullName, revised.CreatedByName);
+        Assert.Equal(basics.SecondUser.Id, revised.UpdatedByUserId);
+        Assert.Equal(basics.SecondUser.FullName, revised.UpdatedByName);
+    }
+}
+
+public class CustomerOfferGroupingTests
+{
+    [Fact]
+    public async Task Customer_offers_list_each_offer_once_with_its_latest_version()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1, serialNumber: 100);
+        var latest = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 2, serialNumber: 100);
+        TestFactory.AddOffer(db.Context, basics, "Loc/101/YL/AA", version: 1, serialNumber: 101);
+
+        var service = TestFactory.CreateCustomerService(db.Context);
+        var page = await service.GetOffersAsync(basics.Customer.Id, 1, 50, CancellationToken.None);
+
+        Assert.Equal(2, page.TotalCount);
+        var offer100 = Assert.Single(page.Items, item => item.Reference == "Loc/100/YL/AA");
+        Assert.Equal(latest.Id, offer100.Id);
+        Assert.Equal(2, offer100.Version);
+        Assert.Equal(2, offer100.VersionsCount);
+    }
+
+    [Fact]
+    public async Task Customer_detail_counts_and_sums_only_the_latest_version_of_each_offer()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1, serialNumber: 100);
+        var v2 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 2, serialNumber: 100);
+        v1.Total = 1000m;
+        v2.Total = 1500m;
+        db.Context.SaveChanges();
+
+        var service = TestFactory.CreateCustomerService(db.Context);
+        var detail = await service.GetByIdWithHistoryAsync(basics.Customer.Id, CancellationToken.None);
+
+        Assert.NotNull(detail);
+        Assert.Equal(1, detail!.OffersCount);
+        Assert.Equal(1500m, detail.TotalValue);
+        var history = Assert.Single(detail.Offers);
+        Assert.Equal(2, history.Version);
+        Assert.Equal(2, history.VersionsCount);
+    }
 }

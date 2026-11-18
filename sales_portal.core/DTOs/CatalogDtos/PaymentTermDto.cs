@@ -8,4 +8,6 @@ public class PaymentTermDto
     public string LabelAr { get; set; } = string.Empty;
     public int Days { get; set; }
     public bool IsActive { get; set; }
+    public string? Conditions { get; set; }
+    public string? ConditionsAr { get; set; }
 }

@@ -908,6 +908,14 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("code");
 
+                    b.Property<string>("Conditions")
+                        .HasColumnType("text")
+                        .HasColumnName("conditions");
+
+                    b.Property<string>("ConditionsAr")
+                        .HasColumnType("text")
+                        .HasColumnName("conditions_ar");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");

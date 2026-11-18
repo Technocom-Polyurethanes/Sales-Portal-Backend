@@ -13,6 +13,8 @@ public class DocumentMetadataDto
     public DateOnly? ExpiryDate { get; set; }
     public string PaymentTerm { get; set; } = string.Empty;
     public string PaymentTermAr { get; set; } = string.Empty;
+    public string? PaymentConditions { get; set; }
+    public string? PaymentConditionsAr { get; set; }
     public string SalesRepresentative { get; set; } = string.Empty;
     public string SalesRepresentativeInitials { get; set; } = string.Empty;
     public OfferStatus Status { get; set; }

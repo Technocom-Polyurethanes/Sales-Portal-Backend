@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
+using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
@@ -54,6 +55,85 @@ public class CatalogService : ICatalogService
             () => LoadBootstrapAsync(CancellationToken.None));
     }
 
+    public async Task<PaymentTermDto> CreatePaymentTermAsync(
+        UpsertPaymentTermDto dto,
+        CancellationToken cancellationToken)
+    {
+        ValidatePaymentTerm(dto);
+
+        var term = new PaymentTerm { Code = $"custom-{Guid.NewGuid():N}"[..15] };
+        ApplyPaymentTerm(term, dto);
+
+        await _paymentTerms.AddAsync(term);
+        await _paymentTerms.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Catalog);
+
+        return MapPaymentTerm(term);
+    }
+
+    public async Task<PaymentTermDto> UpdatePaymentTermAsync(
+        Guid id,
+        UpsertPaymentTermDto dto,
+        CancellationToken cancellationToken)
+    {
+        ValidatePaymentTerm(dto);
+
+        var term = await _paymentTerms.GetByIdAsync(id)
+            ?? throw new NotFoundException("Payment term was not found.");
+
+        ApplyPaymentTerm(term, dto);
+        _paymentTerms.Update(term);
+        await _paymentTerms.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Catalog);
+
+        return MapPaymentTerm(term);
+    }
+
+    private static void ValidatePaymentTerm(UpsertPaymentTermDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Label))
+        {
+            throw new ValidationException("Payment term name in English is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.LabelAr))
+        {
+            throw new ValidationException("Payment term name in Arabic is required.");
+        }
+
+        if (dto.Days is < 0 or > 365)
+        {
+            throw new ValidationException("Payment term days must be between 0 and 365.");
+        }
+
+        if ((dto.Conditions?.Length ?? 0) > 800 || (dto.ConditionsAr?.Length ?? 0) > 800)
+        {
+            throw new ValidationException("Payment conditions must be 800 characters or fewer.");
+        }
+    }
+
+    private static void ApplyPaymentTerm(PaymentTerm term, UpsertPaymentTermDto dto)
+    {
+        term.Label = dto.Label.Trim();
+        term.LabelAr = dto.LabelAr.Trim();
+        term.Days = dto.Days;
+        term.IsActive = dto.IsActive;
+        term.Conditions = string.IsNullOrWhiteSpace(dto.Conditions) ? null : dto.Conditions.Trim();
+        term.ConditionsAr = string.IsNullOrWhiteSpace(dto.ConditionsAr) ? null : dto.ConditionsAr.Trim();
+    }
+
+    private static PaymentTermDto MapPaymentTerm(PaymentTerm term) => new()
+    {
+        Id = term.Id,
+        Code = term.Code,
+        Label = term.Label,
+        LabelAr = term.LabelAr,
+        Days = term.Days,
+        IsActive = term.IsActive,
+        Conditions = term.Conditions,
+        ConditionsAr = term.ConditionsAr
+    };
+
     private async Task<CatalogBootstrapDto> LoadBootstrapAsync(CancellationToken cancellationToken)
     {
         var paymentTerms = await _paymentTerms.GetAll()
@@ -68,7 +148,9 @@ public class CatalogService : ICatalogService
                 Label = pt.Label,
                 LabelAr = pt.LabelAr,
                 Days = pt.Days,
-                IsActive = pt.IsActive
+                IsActive = pt.IsActive,
+                Conditions = pt.Conditions,
+                ConditionsAr = pt.ConditionsAr
             })
             .ToListAsync(cancellationToken);
 
