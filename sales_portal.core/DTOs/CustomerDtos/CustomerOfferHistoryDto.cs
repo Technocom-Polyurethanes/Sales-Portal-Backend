@@ -7,6 +7,7 @@ public class CustomerOfferHistoryDto
     public Guid Id { get; set; }
     public string Reference { get; set; } = string.Empty;
     public int Version { get; set; }
+    public int VersionsCount { get; set; } = 1;
     public DateOnly IssueDate { get; set; }
     public OfferStatus Status { get; set; }
     public decimal Total { get; set; }

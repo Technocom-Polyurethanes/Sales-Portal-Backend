@@ -127,8 +127,13 @@ public class CustomerService : ICustomerService
             .SelectMany(c => c.Offers)
             .AsNoTracking();
 
-        var totalCount = await offersQuery.CountAsync(cancellationToken);
-        var items = await offersQuery
+        // Versions of one offer are listed once, as the latest version.
+        var latestQuery = offersQuery
+            .Where(o => !offersQuery.Any(other =>
+                other.RootOfferId == o.RootOfferId && other.Version > o.Version));
+
+        var totalCount = await latestQuery.CountAsync(cancellationToken);
+        var items = await latestQuery
             .OrderByDisplayedId()
             .Skip((safePage - 1) * safePageSize)
             .Take(safePageSize)
@@ -150,9 +155,8 @@ public class CustomerService : ICustomerService
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
-                VersionsCount = _customers.GetAll()
-                    .SelectMany(customer => customer.Offers)
-                    .Count(version => version.Reference == o.Reference),
+                VersionsCount = offersQuery.Count(version => version.RootOfferId == o.RootOfferId),
+                RootOfferId = o.RootOfferId,
                 LastModifiedByName = o.UpdatedBy != null
                     ? o.UpdatedBy.FullName
                     : o.CreatedBy.FullName,
@@ -306,8 +310,11 @@ public class CustomerService : ICustomerService
                 DefaultPaymentTermId = c.DefaultPaymentTermId,
                 DefaultPaymentTermLabel = c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Label : null,
                 DefaultCurrency = c.DefaultCurrency,
-                OffersCount = c.Offers.Count,
-                TotalValue = c.Offers.Sum(o => (decimal?)o.Total) ?? 0m,
+                OffersCount = c.Offers.Select(o => o.RootOfferId).Distinct().Count(),
+                TotalValue = c.Offers
+                    .Where(o => !c.Offers.Any(other =>
+                        other.RootOfferId == o.RootOfferId && other.Version > o.Version))
+                    .Sum(o => (decimal?)o.Total) ?? 0m,
                 LastOfferDate = c.Offers
                     .OrderByDescending(o => o.IssueDate)
                     .Select(o => (DateOnly?)o.IssueDate)
@@ -318,6 +325,7 @@ public class CustomerService : ICustomerService
     private static CustomerDetailDto MapDetail(Customer customer)
     {
         var offers = customer.Offers
+            .LatestPerChain()
             .OrderByDisplayedIdInMemory()
             .ToList();
 
@@ -348,6 +356,7 @@ public class CustomerService : ICustomerService
                 Id = o.Id,
                 Reference = o.Reference,
                 Version = o.Version,
+                VersionsCount = customer.Offers.Count(version => version.RootOfferId == o.RootOfferId),
                 IssueDate = o.IssueDate,
                 Status = o.Status,
                 Total = o.Total,

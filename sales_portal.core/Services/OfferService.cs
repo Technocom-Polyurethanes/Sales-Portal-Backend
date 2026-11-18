@@ -289,7 +289,8 @@ public class OfferService : IOfferService
             : next.SuggestedSequence;
 
         draft.Version = draft.Version <= 0 ? 1 : draft.Version;
-        draft.CreatedByUserId = currentUserId;
+        var creatorUserId = currentUserId;
+        draft.CreatedByUserId = creatorUserId;
         draft.Status = OfferStatus.Draft;
         draft.RootOfferId = null;
 
@@ -300,7 +301,7 @@ public class OfferService : IOfferService
             var parent = await _offers.GetAll()
                 .AsNoTracking()
                 .Where(o => o.Id == parentOfferId)
-                .Select(o => new { o.RootOfferId, o.Reference, o.SerialNumber })
+                .Select(o => new { o.RootOfferId, o.Reference, o.SerialNumber, o.CreatedByUserId })
                 .FirstOrDefaultAsync(cancellationToken)
                 ?? throw new NotFoundException("The parent offer was not found.");
 
@@ -316,6 +317,9 @@ public class OfferService : IOfferService
             }
 
             draft.RootOfferId = parent.RootOfferId;
+            // The offer keeps the person who started it; the user saving the new version is only its editor.
+            creatorUserId = parent.CreatedByUserId;
+            draft.CreatedByUserId = creatorUserId;
             draft.Version = await _offers.GetAll()
                 .Where(o => o.RootOfferId == parent.RootOfferId)
                 .MaxAsync(o => o.Version, cancellationToken) + 1;
@@ -331,7 +335,7 @@ public class OfferService : IOfferService
         await EnsureReferenceIsFreeAsync(calculation.Draft, excludeOfferId: null, cancellationToken);
 
         var offer = new Offer();
-        ApplyCalculatedOffer(offer, calculation, currentUserId);
+        ApplyCalculatedOffer(offer, calculation, creatorUserId, currentUserId);
         await _offers.AddAsync(offer);
         await MarkNewChildrenAsAddedAsync(offer);
 
@@ -459,7 +463,8 @@ public class OfferService : IOfferService
         draft.Version = nextVersion;
         draft.ParentOfferId = source.Id;
         draft.Status = OfferStatus.Draft;
-        draft.CreatedByUserId = currentUserId;
+        // A revision keeps the creator of the offer it comes from; only the editor changes.
+        draft.CreatedByUserId = source.CreatedByUserId;
 
         var catalog = await LoadCatalogAsync(draft, cancellationToken);
         var calculation = _calculator.Calculate(draft, catalog);
@@ -468,7 +473,7 @@ public class OfferService : IOfferService
         calculation.Draft.Status = OfferStatus.Draft;
 
         var revisedOffer = new Offer();
-        ApplyCalculatedOffer(revisedOffer, calculation, currentUserId);
+        ApplyCalculatedOffer(revisedOffer, calculation, source.CreatedByUserId, currentUserId);
         await _offers.AddAsync(revisedOffer);
         await MarkNewChildrenAsAddedAsync(revisedOffer);
 

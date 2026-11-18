@@ -7,6 +7,46 @@ namespace sales_portal.infrastructure.Contexts;
 
 public static class DbInitializer
 {
+    // {days} is replaced with the term's days when the document is built.
+    private static async Task EnsureInstalmentTermsAsync(AppDbContext context)
+    {
+        var terms = new[]
+        {
+            Instalment("instalment-50-50", 50),
+            Instalment("instalment-40-60", 40)
+        };
+
+        var existing = await context.PaymentTerms.Select(pt => pt.Code).ToListAsync();
+        var missing = terms.Where(term => !existing.Contains(term.Code)).ToList();
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        context.PaymentTerms.AddRange(missing);
+        await context.SaveChangesAsync();
+    }
+
+    private static PaymentTerm Instalment(string code, int down)
+    {
+        var rest = 100 - down;
+        var downText = $"{down}%";
+        var restText = $"{rest}%";
+        return new PaymentTerm
+        {
+            Code = code,
+            Label = $"{down}% Down Payment / {rest}% After Receiving the Shipment",
+            LabelAr = $"{down}% دفعة مقدمة / {rest}% بعد استلام الشحنة",
+            Days = 30,
+            Conditions =
+                $"{downText} of the total offer value as a down payment with the purchase order, " +
+                $"and the remaining {restText} by a cheque issued to Technocom, due {{days}} days after receipt.",
+            ConditionsAr =
+                $"{downText} من إجمالي قيمة العرض دفعة مقدمة مع أمر التوريد و{restText} المتبقية " +
+                "بموجب شيك صادر لشركة تيكنوكوم ويستحق الاستلام بعد {days} يوم"
+        };
+    }
+
     public static async Task SeedAsync(AppDbContext context, bool seedDemoUser)
     {
         // 1. Seed Default Payment Terms
@@ -20,6 +60,8 @@ public static class DbInitializer
             );
             await context.SaveChangesAsync();
         }
+
+        await EnsureInstalmentTermsAsync(context);
 
         var defaultTerm = await context.PaymentTerms.FirstAsync(pt => pt.Code == "transfer-order");
 

@@ -97,6 +97,8 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
                     : null,
                 PaymentTerm = catalog.PaymentTerm?.Label ?? string.Empty,
                 PaymentTermAr = catalog.PaymentTerm?.LabelAr ?? string.Empty,
+                PaymentConditions = PaymentTermWording.Apply(catalog.PaymentTerm?.Conditions, catalog.PaymentTerm?.Days),
+                PaymentConditionsAr = PaymentTermWording.Apply(catalog.PaymentTerm?.ConditionsAr, catalog.PaymentTerm?.Days),
                 SalesRepresentative = catalog.CreatedBy?.FullName ?? string.Empty,
                 SalesRepresentativeInitials = catalog.CreatedBy?.Initials ?? string.Empty,
                 Status = draft.Status,

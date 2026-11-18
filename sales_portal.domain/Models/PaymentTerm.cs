@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,5 +13,9 @@ namespace sales_portal.domain.Models
         public string LabelAr { get; set; } = default!;
         public int Days { get; set; }                              // 0 = due on issue
         public bool IsActive { get; set; } = true;
+
+        /// <summary>Optional wording of the payment conditions printed with the term; {days} is replaced by <see cref="Days"/>.</summary>
+        public string? Conditions { get; set; }
+        public string? ConditionsAr { get; set; }
     }
 }
