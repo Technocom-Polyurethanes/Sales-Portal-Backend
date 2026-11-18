@@ -665,6 +665,7 @@ public class OfferService : IOfferService
                     NameAr = offer.Customer.NameAr,
                     ContactPerson = offer.Customer.ContactPerson,
                     City = offer.Customer.City,
+                    CityAr = offer.Customer.CityAr,
                     TaxId = offer.Customer.TaxId,
                     DefaultCurrency = offer.Customer.DefaultCurrency,
                     Email = offer.Customer.Email,

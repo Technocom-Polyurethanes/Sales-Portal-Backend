@@ -39,7 +39,7 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
         var customer = catalog.Customer;
         var formCode = !string.IsNullOrWhiteSpace(draft.FormCode)
             ? draft.FormCode
-            : company?.FormCode ?? "TF-06-01A";
+            : company?.FormCode ?? "TF-06-01";
 
         var attentionEn = !string.IsNullOrWhiteSpace(draft.Attention)
             ? draft.Attention
@@ -74,7 +74,7 @@ public class OfferDocumentBuilder : IOfferDocumentBuilder
                 NameAr = FirstNonEmpty(customer?.NameAr, customer?.Name),
                 Address = customer?.Address ?? string.Empty,
                 AddressAr = FirstNonEmpty(customer?.AddressAr, customer?.Address),
-                City = customer?.City,
+                City = FirstNonEmpty(customer?.City, customer?.CityAr),
                 CityAr = FirstNonEmpty(customer?.CityAr, customer?.City),
                 ContactPerson = customer?.ContactPerson,
                 ContactPersonAr = FirstNonEmpty(customer?.ContactPersonAr, customer?.ContactPerson),
