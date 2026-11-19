@@ -423,6 +423,10 @@ public class OfferService : IOfferService
 
             var trackedOffer = await _offers.GetAll().FirstAsync(o => o.Id == id, cancellationToken);
             ApplyCalculatedOffer(trackedOffer, calculation, trackedOffer.CreatedByUserId, currentUserId);
+            // Lines and batches were replaced; when the header values are unchanged EF would not mark
+            // the offer itself as modified and its modified date would stay stale. A different value
+            // forces the update, SaveChanges then stamps the real time.
+            trackedOffer.UpdatedAt = DateTimeOffset.UtcNow;
             await MarkNewChildrenAsAddedAsync(trackedOffer);
 
             await _offers.SaveChangesAsync(cancellationToken);
