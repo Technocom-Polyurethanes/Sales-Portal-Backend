@@ -42,6 +42,8 @@ public class AppDbContext : DbContext
             }
             else if (entry.State == EntityState.Modified)
             {
+                // The creation date is set once, when the row is inserted, and never rewritten.
+                entry.Property(e => e.CreatedAt).IsModified = false;
                 entry.Entity.UpdatedAt = now;
             }
         }
