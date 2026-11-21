@@ -499,7 +499,13 @@ public class OfferService : IOfferService
 
         calculation.Draft.Status = OfferStatus.Draft;
 
-        var revisedOffer = new Offer();
+        // The creation date belongs to the offer, not to a version: a revision keeps the date of the
+        // first version and only its modified date is new (stamped by SaveChanges).
+        var firstCreatedAt = await _offers.GetAll()
+            .Where(o => o.RootOfferId == source.RootOfferId)
+            .MinAsync(o => o.CreatedAt, cancellationToken);
+
+        var revisedOffer = new Offer { CreatedAt = firstCreatedAt };
         ApplyCalculatedOffer(revisedOffer, calculation, source.CreatedByUserId, currentUserId);
         await _offers.AddAsync(revisedOffer);
         await MarkNewChildrenAsAddedAsync(revisedOffer);

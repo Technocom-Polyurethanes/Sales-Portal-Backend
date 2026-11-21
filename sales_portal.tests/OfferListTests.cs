@@ -187,6 +187,23 @@ public class OfferListTests
         Assert.Equal(basics.SecondUser.Id, revised.UpdatedByUserId);
         Assert.Equal(basics.SecondUser.FullName, revised.UpdatedByName);
     }
+
+    [Fact]
+    public async Task ReviseAsync_keeps_the_creation_date_of_the_first_version_and_stamps_a_new_modified_date()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var v2 = await service.ReviseAsync(v1.Id, basics.User.Id, CancellationToken.None);
+        var v3 = await service.ReviseAsync(v2.Id, basics.User.Id, CancellationToken.None);
+
+        Assert.Equal(v1.CreatedAt, v2.CreatedAt);
+        Assert.Equal(v1.CreatedAt, v3.CreatedAt);
+        Assert.True(v3.UpdatedAt >= v3.CreatedAt);
+        Assert.True(v3.UpdatedAt > v1.CreatedAt);
+    }
 }
 
 public class CustomerOfferGroupingTests
