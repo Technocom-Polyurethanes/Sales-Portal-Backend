@@ -592,11 +592,17 @@ namespace sales_portal.infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_offers");
 
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_offers_created_at");
+
                     b.HasIndex("CreatedByUserId")
                         .HasDatabaseName("ix_offers_created_by_user_id");
 
                     b.HasIndex("CustomerId")
                         .HasDatabaseName("ix_offers_customer_id");
+
+                    b.HasIndex("IssueDate")
+                        .HasDatabaseName("ix_offers_issue_date");
 
                     b.HasIndex("ParentOfferId")
                         .HasDatabaseName("ix_offers_parent_offer_id");
@@ -606,6 +612,15 @@ namespace sales_portal.infrastructure.Migrations
 
                     b.HasIndex("Reference")
                         .HasDatabaseName("ix_offers_reference");
+
+                    b.HasIndex("SerialNumber")
+                        .HasDatabaseName("ix_offers_serial_number");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_offers_status");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_offers_updated_at");
 
                     b.HasIndex("UpdatedByUserId")
                         .HasDatabaseName("ix_offers_updated_by_user_id");

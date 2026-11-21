@@ -36,6 +36,13 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
 
         builder.HasIndex(o => o.Reference);
 
+        // Columns the offer list filters and sorts by.
+        builder.HasIndex(o => o.Status);
+        builder.HasIndex(o => o.UpdatedAt);
+        builder.HasIndex(o => o.CreatedAt);
+        builder.HasIndex(o => o.IssueDate);
+        builder.HasIndex(o => o.SerialNumber);
+
         // Use PostgreSQL's system column as the concurrency token.
         builder.Property<uint>("xmin")
             .IsRowVersion();
