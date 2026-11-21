@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using sales_portal.core.DTOs;
 using sales_portal.core.DTOs.OfferDtos;
 using sales_portal.core.Services;
 using sales_portal.domain.Enums;
