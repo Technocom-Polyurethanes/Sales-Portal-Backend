@@ -136,7 +136,6 @@ public class OfferService : IOfferService
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
-                VersionsCount = _offers.GetAll().Count(version => version.RootOfferId == o.RootOfferId),
                 LastModifiedByName = o.UpdatedBy != null
                     ? o.UpdatedBy.FullName
                     : o.CreatedBy.FullName,
@@ -145,6 +144,23 @@ public class OfferService : IOfferService
                 RootOfferId = o.RootOfferId
             })
             .ToListAsync(cancellationToken);
+
+        // One grouped query for the whole page instead of a correlated count per row.
+        var rootIds = items.Select(item => item.RootOfferId).Distinct().ToList();
+        if (rootIds.Count > 0)
+        {
+            var versionCounts = await _offers.GetAll()
+                .AsNoTracking()
+                .Where(o => rootIds.Contains(o.RootOfferId))
+                .GroupBy(o => o.RootOfferId)
+                .Select(g => new { RootOfferId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.RootOfferId, x => x.Count, cancellationToken);
+
+            foreach (var item in items)
+            {
+                item.VersionsCount = versionCounts.GetValueOrDefault(item.RootOfferId);
+            }
+        }
 
         return new PaginatedResultDto<OfferListItemDto>
         {
@@ -196,7 +212,7 @@ public class OfferService : IOfferService
             throw new NotFoundException("Offer was not found.");
         }
 
-        return await _offers.GetAll()
+        var versions = await _offers.GetAll()
             .AsNoTracking()
             .Where(o => o.RootOfferId == rootOfferId)
             .OrderByDescending(o => o.Version)
@@ -219,7 +235,6 @@ public class OfferService : IOfferService
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
-                VersionsCount = _offers.GetAll().Count(version => version.RootOfferId == o.RootOfferId),
                 LastModifiedByName = o.UpdatedBy != null
                     ? o.UpdatedBy.FullName
                     : o.CreatedBy.FullName,
@@ -228,6 +243,14 @@ public class OfferService : IOfferService
                 RootOfferId = o.RootOfferId
             })
             .ToListAsync(cancellationToken);
+
+        // Every row belongs to the same chain, so the count is the list length.
+        foreach (var version in versions)
+        {
+            version.VersionsCount = versions.Count;
+        }
+
+        return versions;
     }
 
     public async Task<OfferNextSequenceDto> GetNextSequenceAsync(

@@ -27,7 +27,20 @@ public class SettingsService : ISettingsService
         _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
-    public async Task<SettingsDto> GetAsync(CancellationToken cancellationToken)
+    // Company, workspace and bank settings are read on every offer screen and rarely written.
+    // UpdateAsync, BankAccountService and CatalogService all invalidate the catalog region.
+    private static readonly string[] SettingsRegions = [CacheRegions.Catalog];
+
+    public Task<SettingsDto> GetAsync(CancellationToken cancellationToken)
+    {
+        // The loader is shared by every request waiting on the entry, so it ignores the caller's token.
+        return _cache.GetOrCreateAsync(
+            "settings:all",
+            SettingsRegions,
+            () => LoadSettingsAsync(CancellationToken.None));
+    }
+
+    private async Task<SettingsDto> LoadSettingsAsync(CancellationToken cancellationToken)
     {
         var company = await _companySettings.GetAll()
             .AsNoTracking()

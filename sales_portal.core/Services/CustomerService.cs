@@ -112,9 +112,51 @@ public class CustomerService : ICustomerService
             async () =>
             {
                 var rows = await BuildListQuery(null).ToListAsync(CancellationToken.None);
+
+                // One flat query over the light offer columns (no snapshot JSON), grouped here,
+                // instead of three correlated subqueries per customer row.
+                var offerRows = await _customers.GetAll()
+                    .AsNoTracking()
+                    .SelectMany(c => c.Offers)
+                    .Select(o => new OfferSummaryRow(o.CustomerId, o.RootOfferId, o.Version, o.Total, o.IssueDate))
+                    .ToListAsync(CancellationToken.None);
+
+                var summaries = offerRows
+                    .GroupBy(o => o.CustomerId)
+                    .ToDictionary(g => g.Key, g => SummarizeOffers(g));
+
+                foreach (var row in rows)
+                {
+                    if (summaries.TryGetValue(row.Id, out var summary))
+                    {
+                        row.OffersCount = summary.OffersCount;
+                        row.TotalValue = summary.TotalValue;
+                        row.LastOfferDate = summary.LastOfferDate;
+                    }
+                }
+
                 rows.Sort((a, b) => NaturalStringComparer.Instance.Compare(a.CustomerCode, b.CustomerCode));
                 return rows;
             });
+    }
+
+    private sealed record OfferSummaryRow(Guid CustomerId, Guid RootOfferId, int Version, decimal Total, DateOnly IssueDate);
+
+    private sealed record CustomerOfferSummary(int OffersCount, decimal TotalValue, DateOnly? LastOfferDate);
+
+    private static CustomerOfferSummary SummarizeOffers(IEnumerable<OfferSummaryRow> offers)
+    {
+        var rows = offers.ToList();
+        // Only the highest version of each chain counts, as in the customer detail.
+        var latest = rows
+            .GroupBy(o => o.RootOfferId)
+            .Select(chain => chain.OrderByDescending(o => o.Version).First())
+            .ToList();
+
+        return new CustomerOfferSummary(
+            latest.Count,
+            latest.Sum(o => o.Total),
+            rows.Count == 0 ? null : rows.Max(o => o.IssueDate));
     }
 
     public async Task<PaginatedResultDto<OfferListItemDto>> GetOffersAsync(Guid id, int page, int pageSize, CancellationToken cancellationToken)
@@ -155,7 +197,6 @@ public class CustomerService : ICustomerService
                 CreatedByName = o.CreatedBy.FullName,
                 CreatedAt = o.CreatedAt,
                 UpdatedAt = o.UpdatedAt,
-                VersionsCount = offersQuery.Count(version => version.RootOfferId == o.RootOfferId),
                 RootOfferId = o.RootOfferId,
                 LastModifiedByName = o.UpdatedBy != null
                     ? o.UpdatedBy.FullName
@@ -164,6 +205,22 @@ public class CustomerService : ICustomerService
                 ParentOfferId = o.ParentOfferId
             })
             .ToListAsync(cancellationToken);
+
+        // One grouped query for the page instead of a correlated count per row.
+        var rootIds = items.Select(item => item.RootOfferId).Distinct().ToList();
+        if (rootIds.Count > 0)
+        {
+            var versionCounts = await offersQuery
+                .Where(o => rootIds.Contains(o.RootOfferId))
+                .GroupBy(o => o.RootOfferId)
+                .Select(g => new { RootOfferId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.RootOfferId, x => x.Count, cancellationToken);
+
+            foreach (var item in items)
+            {
+                item.VersionsCount = versionCounts.GetValueOrDefault(item.RootOfferId);
+            }
+        }
 
         return new PaginatedResultDto<OfferListItemDto>
         {
@@ -310,20 +367,19 @@ public class CustomerService : ICustomerService
                 DefaultPaymentTermId = c.DefaultPaymentTermId,
                 DefaultPaymentTermLabel = c.DefaultPaymentTerm != null ? c.DefaultPaymentTerm.Label : null,
                 DefaultCurrency = c.DefaultCurrency,
-                OffersCount = c.Offers.Select(o => o.RootOfferId).Distinct().Count(),
-                TotalValue = c.Offers
-                    .Where(o => !c.Offers.Any(other =>
-                        other.RootOfferId == o.RootOfferId && other.Version > o.Version))
-                    .Sum(o => (decimal?)o.Total) ?? 0m,
-                LastOfferDate = c.Offers
-                    .OrderByDescending(o => o.IssueDate)
-                    .Select(o => (DateOnly?)o.IssueDate)
-                    .FirstOrDefault()
+                // OffersCount, TotalValue and LastOfferDate are filled in by LoadDirectoryListAsync.
+                OffersCount = 0,
+                TotalValue = 0m,
+                LastOfferDate = null
             });
     }
 
     private static CustomerDetailDto MapDetail(Customer customer)
     {
+        var versionCounts = customer.Offers
+            .GroupBy(o => o.RootOfferId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
         var offers = customer.Offers
             .LatestPerChain()
             .OrderByDisplayedIdInMemory()
@@ -356,7 +412,7 @@ public class CustomerService : ICustomerService
                 Id = o.Id,
                 Reference = o.Reference,
                 Version = o.Version,
-                VersionsCount = customer.Offers.Count(version => version.RootOfferId == o.RootOfferId),
+                VersionsCount = versionCounts[o.RootOfferId],
                 IssueDate = o.IssueDate,
                 Status = o.Status,
                 Total = o.Total,
