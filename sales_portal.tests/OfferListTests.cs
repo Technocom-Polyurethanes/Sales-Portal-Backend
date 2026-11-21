@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using sales_portal.core.DTOs.OfferDtos;
+using sales_portal.core.DTOs;
 using sales_portal.core.Services;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Models;
@@ -329,7 +329,7 @@ internal static class OfferListTestsHelper
 {
     public static Task<OfferDetailDto> CreateOfferAsync(
         TestDatabase db,
-        TestBasics basics,
+        SeededBasics basics,
         string reference,
         OfferType offerType,
         DateOnly issueDate,
@@ -346,7 +346,7 @@ file static class OfferListTestsBridge
 {
     public static async Task<OfferDetailDto> CreateAsync(
         TestDatabase db,
-        TestBasics basics,
+        SeededBasics basics,
         string reference,
         OfferType offerType,
         DateOnly issueDate,
@@ -406,7 +406,7 @@ file static class OfferListTestsExtensions
     public static Task<OfferDetailDto> CreateAsync(
         this OfferListTests _,
         TestDatabase db,
-        TestBasics basics,
+        SeededBasics basics,
         string reference,
         OfferType offerType,
         DateOnly issueDate,
