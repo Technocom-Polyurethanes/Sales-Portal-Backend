@@ -207,7 +207,10 @@ public class OfferListTests
         });
         db.Context.SaveChanges();
         var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
-        await Task.Delay(15);
+        var originalCreatedAt = new DateTimeOffset(2026, 10, 15, 9, 0, 0, TimeSpan.Zero);
+        v1.CreatedAt = originalCreatedAt;
+        v1.UpdatedAt = originalCreatedAt;
+        db.Context.SaveChanges();
 
         var service = TestFactory.CreateOfferService(db.Context);
         var v2 = await service.ReviseAsync(v1.Id, basics.User.Id, CancellationToken.None);
