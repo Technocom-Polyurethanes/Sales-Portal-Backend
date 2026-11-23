@@ -207,6 +207,24 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
     }
 
     [Fact]
+    public async Task Changing_the_issue_date_rewrites_the_year_of_the_reference()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var created = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
+        var id = created.GetProperty("id").GetGuid();
+        ReferenceRules.TryParse(created.GetProperty("reference").GetString(), out _, out var sequence, out _);
+
+        var payload = BuildPayload(seed, "Loc/1/YL/ZZ");
+        payload["issueDate"] = "2027-01-15";
+        var response = await client.PutAsJsonAsync($"/api/offers/{id}", payload);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await ReadJsonAsync(response);
+        Assert.Equal($"Loc/{sequence:0000}-2027/YL/TU", updated.GetProperty("reference").GetString());
+    }
+
+    [Fact]
     public async Task Validity_days_round_trip_and_reach_the_document()
     {
         var seed = await SeedAsync();

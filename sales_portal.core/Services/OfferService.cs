@@ -435,7 +435,7 @@ public class OfferService : IOfferService
 
         // The reference is never taken from the client: the offer keeps its number and
         // initials and only the type segment follows the selected offer type.
-        draft.Reference = ReferenceRules.WithType(DisplayReference(offer), draft.OfferType.Value, draft.IssueDate.Year);
+        draft.Reference = ReferenceRules.WithTypeAndYear(DisplayReference(offer), draft.OfferType.Value, draft.IssueDate.Year);
 
         if (ReferenceRules.TryGetSequence(draft.Reference, out var sequence))
         {

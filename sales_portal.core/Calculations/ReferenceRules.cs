@@ -68,12 +68,12 @@ public static class ReferenceRules
     }
 
     /// <summary>
-    /// Rewrites the type segment of a reference and keeps its serial and initials, so changing
-    /// the offer type never changes the number. Legacy references get the given issue year.
+    /// Rewrites the type and year of a reference and keeps its serial and initials, so changing
+    /// the offer type or the issue date never changes the number.
     /// </summary>
-    public static string WithType(string reference, OfferType type, int year)
-        => TryParse(reference, out _, out var sequence, out var initials, out var parsedYear)
-            ? Build(type, sequence, initials, parsedYear != 0 ? parsedYear : year)
+    public static string WithTypeAndYear(string reference, OfferType type, int year)
+        => TryParse(reference, out _, out var sequence, out var initials, out _)
+            ? Build(type, sequence, initials, year)
             : reference;
 
     /// <summary>

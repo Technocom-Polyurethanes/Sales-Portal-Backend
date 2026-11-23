@@ -47,18 +47,17 @@ public class ReferenceRulesTests
     }
 
     [Fact]
-    public void WithType_changes_only_the_type_segment()
+    public void WithTypeAndYear_keeps_the_serial_and_initials()
     {
         Assert.Equal(
-            "Int/0042-2026/YL/JD",
-            ReferenceRules.WithType("Loc/0042-2026/YL/JD", OfferType.Int, 2028));
+            "Int/0042-2028/YL/JD",
+            ReferenceRules.WithTypeAndYear("Loc/0042-2026/YL/JD", OfferType.Int, 2028));
         Assert.Equal(
-            "Loc/0042-2026/YL/JD",
-            ReferenceRules.WithType("Int/0042-2026/YL/JD", OfferType.Loc, 2028));
-        // A legacy reference gains the issue year when the type is rewritten.
+            "Loc/0042-2028/YL/JD",
+            ReferenceRules.WithTypeAndYear("Int/0042-2026/YL/JD", OfferType.Loc, 2028));
         Assert.Equal(
             "Int/0042-2028/YL/JD",
-            ReferenceRules.WithType("Loc/42/YL/JD", OfferType.Int, 2028));
+            ReferenceRules.WithTypeAndYear("Loc/42/YL/JD", OfferType.Int, 2028));
     }
 
     [Fact]
