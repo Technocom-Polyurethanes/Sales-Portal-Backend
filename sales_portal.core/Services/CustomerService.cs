@@ -210,15 +210,28 @@ public class CustomerService : ICustomerService
         var rootIds = items.Select(item => item.RootOfferId).Distinct().ToList();
         if (rootIds.Count > 0)
         {
-            var versionCounts = await offersQuery
+            var chains = await offersQuery
                 .Where(o => rootIds.Contains(o.RootOfferId))
                 .GroupBy(o => o.RootOfferId)
-                .Select(g => new { RootOfferId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.RootOfferId, x => x.Count, cancellationToken);
+                .Select(g => new
+                {
+                    RootOfferId = g.Key,
+                    Count = g.Count(),
+                    FirstCreatedAt = g.Min(o => o.CreatedAt)
+                })
+                .ToDictionaryAsync(x => x.RootOfferId, cancellationToken);
 
             foreach (var item in items)
             {
-                item.VersionsCount = versionCounts.GetValueOrDefault(item.RootOfferId);
+                if (chains.TryGetValue(item.RootOfferId, out var chain))
+                {
+                    item.VersionsCount = chain.Count;
+                    item.RootCreatedAt = chain.FirstCreatedAt;
+                }
+                else
+                {
+                    item.RootCreatedAt = item.CreatedAt;
+                }
             }
         }
 
