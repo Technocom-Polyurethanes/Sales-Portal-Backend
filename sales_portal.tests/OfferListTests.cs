@@ -189,10 +189,114 @@ public class OfferListTests
     }
 
     [Fact]
-    public async Task ReviseAsync_keeps_the_creation_date_of_the_first_version_and_stamps_a_new_modified_date()
+    public async Task ReviseAsync_gives_each_version_its_own_creation_date_and_keeps_the_first_as_root()
     {
         using var db = new TestDatabase();
         var basics = TestFactory.SeedBasics(db.Context);
+        SeedBankAccount(db);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+        var firstCreatedAt = SetCreatedAt(db, v1, new DateTimeOffset(2020, 10, 15, 9, 0, 0, TimeSpan.Zero));
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var v2 = await service.ReviseAsync(v1.Id, basics.User.Id, CancellationToken.None);
+        var v3 = await service.ReviseAsync(v2.Id, basics.User.Id, CancellationToken.None);
+
+        // A revision is stamped when it is created, not with the date of an earlier version.
+        Assert.True(v2.CreatedAt > firstCreatedAt);
+        Assert.True(v3.CreatedAt >= v2.CreatedAt);
+        Assert.True(v3.UpdatedAt >= v3.CreatedAt);
+
+        // The offer's creation date stays that of v1 on every version.
+        Assert.Equal(firstCreatedAt, v2.RootCreatedAt);
+        Assert.Equal(firstCreatedAt, v3.RootCreatedAt);
+
+        // v1 itself is untouched.
+        var reloadedV1 = await service.GetByIdAsync(v1.Id, CancellationToken.None);
+        Assert.NotNull(reloadedV1);
+        Assert.Equal(firstCreatedAt, reloadedV1!.CreatedAt);
+        Assert.Equal(firstCreatedAt, reloadedV1.RootCreatedAt);
+    }
+
+    [Fact]
+    public async Task Updating_an_offer_never_changes_its_creation_date()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+        var createdAt = SetCreatedAt(db, v1, new DateTimeOffset(2020, 10, 15, 9, 0, 0, TimeSpan.Zero));
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var updated = await service.UpdateStatusAsync(
+            v1.Id,
+            new UpdateOfferStatusDto { Status = OfferStatus.Accepted },
+            basics.SecondUser.Id,
+            CancellationToken.None);
+
+        Assert.Equal(createdAt, updated.CreatedAt);
+        Assert.Equal(createdAt, updated.RootCreatedAt);
+        Assert.True(updated.UpdatedAt > createdAt);
+        Assert.Equal(basics.SecondUser.FullName, updated.UpdatedByName);
+    }
+
+    [Fact]
+    public async Task Updating_a_later_version_keeps_its_own_creation_date_and_the_root_date()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+        var v2 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 2);
+        var firstCreatedAt = SetCreatedAt(db, v1, new DateTimeOffset(2020, 10, 15, 9, 0, 0, TimeSpan.Zero));
+        var secondCreatedAt = SetCreatedAt(db, v2, new DateTimeOffset(2020, 10, 16, 10, 30, 0, TimeSpan.Zero));
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var updated = await service.UpdateStatusAsync(
+            v2.Id,
+            new UpdateOfferStatusDto { Status = OfferStatus.Accepted },
+            basics.SecondUser.Id,
+            CancellationToken.None);
+
+        Assert.Equal(secondCreatedAt, updated.CreatedAt);
+        Assert.Equal(firstCreatedAt, updated.RootCreatedAt);
+        Assert.True(updated.UpdatedAt > secondCreatedAt);
+    }
+
+    [Fact]
+    public async Task Detail_versions_and_list_expose_the_first_versions_creation_date()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+        var v2 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 2);
+        var v3 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 3);
+        var firstCreatedAt = SetCreatedAt(db, v1, new DateTimeOffset(2020, 10, 15, 9, 5, 0, TimeSpan.Zero));
+        var secondCreatedAt = SetCreatedAt(db, v2, new DateTimeOffset(2020, 10, 16, 10, 23, 0, TimeSpan.Zero));
+        var thirdCreatedAt = SetCreatedAt(db, v3, new DateTimeOffset(2020, 10, 17, 11, 41, 0, TimeSpan.Zero));
+
+        var service = TestFactory.CreateOfferService(db.Context);
+
+        // Offer summary: viewing the newest version still reports the first creation date.
+        var detail = await service.GetByIdAsync(v3.Id, CancellationToken.None);
+        Assert.NotNull(detail);
+        Assert.Equal(thirdCreatedAt, detail!.CreatedAt);
+        Assert.Equal(firstCreatedAt, detail.RootCreatedAt);
+
+        // Version history: every row has its own creation date and the shared root date.
+        var versions = await service.GetVersionsAsync(v3.Id, CancellationToken.None);
+        Assert.Equal(
+            new[] { thirdCreatedAt, secondCreatedAt, firstCreatedAt },
+            versions.Select(version => version.CreatedAt).ToArray());
+        Assert.All(versions, version => Assert.Equal(firstCreatedAt, version.RootCreatedAt));
+
+        // Offer list: one row per offer (the latest version) carrying the root date.
+        var list = await service.GetListAsync(new OfferQueryParamsDto(), CancellationToken.None);
+        var row = Assert.Single(list.Items);
+        Assert.Equal(v3.Id, row.Id);
+        Assert.Equal(thirdCreatedAt, row.CreatedAt);
+        Assert.Equal(firstCreatedAt, row.RootCreatedAt);
+    }
+
+    private static void SeedBankAccount(TestDatabase db)
+    {
         db.Context.BankAccounts.Add(new BankAccount
         {
             Bank = "Test Bank",
@@ -206,20 +310,16 @@ public class OfferListTests
             IsActive = true
         });
         db.Context.SaveChanges();
-        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
-        var originalCreatedAt = new DateTimeOffset(2026, 10, 15, 9, 0, 0, TimeSpan.Zero);
-        v1.CreatedAt = originalCreatedAt;
-        v1.UpdatedAt = originalCreatedAt;
+    }
+
+    // Uses the synchronous SaveChanges on purpose: it bypasses the creation-date guard of
+    // SaveChangesAsync, so a test can start from an offer that "was created" in the past.
+    private static DateTimeOffset SetCreatedAt(TestDatabase db, Offer offer, DateTimeOffset createdAt)
+    {
+        offer.CreatedAt = createdAt;
+        offer.UpdatedAt = createdAt;
         db.Context.SaveChanges();
-
-        var service = TestFactory.CreateOfferService(db.Context);
-        var v2 = await service.ReviseAsync(v1.Id, basics.User.Id, CancellationToken.None);
-        var v3 = await service.ReviseAsync(v2.Id, basics.User.Id, CancellationToken.None);
-
-        Assert.Equal(v1.CreatedAt, v2.CreatedAt);
-        Assert.Equal(v1.CreatedAt, v3.CreatedAt);
-        Assert.True(v3.UpdatedAt >= v3.CreatedAt);
-        Assert.True(v3.UpdatedAt > v1.CreatedAt);
+        return createdAt;
     }
 }
 

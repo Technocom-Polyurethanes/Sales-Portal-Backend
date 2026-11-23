@@ -149,16 +149,29 @@ public class OfferService : IOfferService
         var rootIds = items.Select(item => item.RootOfferId).Distinct().ToList();
         if (rootIds.Count > 0)
         {
-            var versionCounts = await _offers.GetAll()
+            var chains = await _offers.GetAll()
                 .AsNoTracking()
                 .Where(o => rootIds.Contains(o.RootOfferId))
                 .GroupBy(o => o.RootOfferId)
-                .Select(g => new { RootOfferId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.RootOfferId, x => x.Count, cancellationToken);
+                .Select(g => new
+                {
+                    RootOfferId = g.Key,
+                    Count = g.Count(),
+                    FirstCreatedAt = g.Min(o => o.CreatedAt)
+                })
+                .ToDictionaryAsync(x => x.RootOfferId, cancellationToken);
 
             foreach (var item in items)
             {
-                item.VersionsCount = versionCounts.GetValueOrDefault(item.RootOfferId);
+                if (chains.TryGetValue(item.RootOfferId, out var chain))
+                {
+                    item.VersionsCount = chain.Count;
+                    item.RootCreatedAt = chain.FirstCreatedAt;
+                }
+                else
+                {
+                    item.RootCreatedAt = item.CreatedAt;
+                }
             }
         }
 
@@ -183,8 +196,16 @@ public class OfferService : IOfferService
         }
 
         var detail = MapOfferDetails(offer);
-        detail.VersionsCount = await _offers.GetAll()
-            .CountAsync(o => o.RootOfferId == offer.RootOfferId, cancellationToken);
+        var chain = await _offers.GetAll()
+            .AsNoTracking()
+            .Where(o => o.RootOfferId == offer.RootOfferId)
+            .GroupBy(o => o.RootOfferId)
+            .Select(g => new { Count = g.Count(), FirstCreatedAt = g.Min(o => o.CreatedAt) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        detail.VersionsCount = chain?.Count ?? 1;
+        // The offer is "created" when its first version was; a later version only has its own date.
+        detail.RootCreatedAt = chain?.FirstCreatedAt ?? offer.CreatedAt;
         return detail;
     }
 
@@ -244,10 +265,13 @@ public class OfferService : IOfferService
             })
             .ToListAsync(cancellationToken);
 
-        // Every row belongs to the same chain, so the count is the list length.
+        // Every row belongs to the same chain, so the count is the list length and the
+        // offer's creation date is the earliest one in the list. Each row keeps its own CreatedAt.
+        var rootCreatedAt = versions.Count > 0 ? versions.Min(version => version.CreatedAt) : default;
         foreach (var version in versions)
         {
             version.VersionsCount = versions.Count;
+            version.RootCreatedAt = rootCreatedAt;
         }
 
         return versions;
@@ -499,13 +523,10 @@ public class OfferService : IOfferService
 
         calculation.Draft.Status = OfferStatus.Draft;
 
-        // The creation date belongs to the offer, not to a version: a revision keeps the date of the
-        // first version and only its modified date is new (stamped by SaveChanges).
-        var firstCreatedAt = await _offers.GetAll()
-            .Where(o => o.RootOfferId == source.RootOfferId)
-            .MinAsync(o => o.CreatedAt, cancellationToken);
-
-        var revisedOffer = new Offer { CreatedAt = firstCreatedAt };
+        // Every version has its own creation date: a revision is stamped with the time it is created
+        // (by SaveChanges) and never inherits the date of an earlier version. The offer's first
+        // creation date is exposed separately as RootCreatedAt.
+        var revisedOffer = new Offer();
         ApplyCalculatedOffer(revisedOffer, calculation, source.CreatedByUserId, currentUserId);
         await _offers.AddAsync(revisedOffer);
         await MarkNewChildrenAsAddedAsync(revisedOffer);
