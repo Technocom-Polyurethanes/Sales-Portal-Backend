@@ -222,7 +222,7 @@ public class OfferListTests
     {
         using var db = new TestDatabase();
         var basics = TestFactory.SeedBasics(db.Context);
-        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1, status: OfferStatus.Issued);
         var createdAt = SetCreatedAt(db, v1, new DateTimeOffset(2020, 10, 15, 9, 0, 0, TimeSpan.Zero));
 
         var service = TestFactory.CreateOfferService(db.Context);
@@ -244,7 +244,7 @@ public class OfferListTests
         using var db = new TestDatabase();
         var basics = TestFactory.SeedBasics(db.Context);
         var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
-        var v2 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 2);
+        var v2 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 2, status: OfferStatus.Issued);
         var firstCreatedAt = SetCreatedAt(db, v1, new DateTimeOffset(2020, 10, 15, 9, 0, 0, TimeSpan.Zero));
         var secondCreatedAt = SetCreatedAt(db, v2, new DateTimeOffset(2020, 10, 16, 10, 30, 0, TimeSpan.Zero));
 
