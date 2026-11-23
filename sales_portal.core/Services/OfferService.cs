@@ -280,7 +280,8 @@ public class OfferService : IOfferService
     public async Task<OfferNextSequenceDto> GetNextSequenceAsync(
         OfferType offerType,
         Guid? currentUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateOnly? issueDate = null)
     {
         var maxSeq = await _offers.GetAll()
             .AsNoTracking()
@@ -311,7 +312,11 @@ public class OfferService : IOfferService
         return new OfferNextSequenceDto
         {
             SuggestedSequence = suggestedSequence,
-            SuggestedReference = ReferenceRules.Build(offerType, suggestedSequence, initials),
+            SuggestedReference = ReferenceRules.Build(
+                offerType,
+                suggestedSequence,
+                initials,
+                issueDate?.Year ?? DateTime.UtcNow.Year),
             IsFirstOffer = references.Count == 0
         };
     }
@@ -373,7 +378,7 @@ public class OfferService : IOfferService
         }
 
         draft.SerialNumber = sequence;
-        draft.Reference = ReferenceRules.Build(draft.OfferType.Value, sequence, initials);
+        draft.Reference = ReferenceRules.Build(draft.OfferType.Value, sequence, initials, draft.IssueDate.Year);
 
         var catalog = await LoadCatalogAsync(draft, cancellationToken);
         var calculation = _calculator.Calculate(draft, catalog);
@@ -430,7 +435,7 @@ public class OfferService : IOfferService
 
         // The reference is never taken from the client: the offer keeps its number and
         // initials and only the type segment follows the selected offer type.
-        draft.Reference = ReferenceRules.WithType(DisplayReference(offer), draft.OfferType.Value);
+        draft.Reference = ReferenceRules.WithType(DisplayReference(offer), draft.OfferType.Value, draft.IssueDate.Year);
 
         if (ReferenceRules.TryGetSequence(draft.Reference, out var sequence))
         {
@@ -785,7 +790,8 @@ public class OfferService : IOfferService
                 ReferenceRules.TryGetSequence(offer.Reference, out var sequence)
                     ? sequence
                     : offer.SerialNumber,
-                ReferenceRules.InitialsFrom(offer.CreatedBy?.Initials, offer.CreatedBy?.FullName));
+                ReferenceRules.InitialsFrom(offer.CreatedBy?.Initials, offer.CreatedBy?.FullName),
+                offer.IssueDate.Year);
 
     private static OfferDraftDto MapToDraft(Offer offer)
     {

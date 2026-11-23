@@ -10,23 +10,38 @@ namespace SalesPortal.Tests;
 public class ReferenceRulesTests
 {
     [Fact]
-    public void Build_produces_the_type_sequence_and_initials()
+    public void Build_produces_the_type_padded_sequence_year_and_initials()
     {
-        Assert.Equal("Loc/42/YL/JD", ReferenceRules.Build(OfferType.Loc, 42, "jd"));
-        Assert.Equal("Int/43/YL/AB", ReferenceRules.Build(OfferType.Int, 43, "AB"));
-        Assert.True(ReferenceRules.IsValid("Loc/42/YL/JD"));
-        Assert.True(ReferenceRules.IsValid("Int/43/YL/AB"));
-        Assert.Null(ReferenceRules.Validate("Loc/42/YL/JD", OfferType.Loc));
-        Assert.Null(ReferenceRules.Validate("Int/43/YL/AB", OfferType.Int));
+        Assert.Equal("Loc/0042-2026/YL/JD", ReferenceRules.Build(OfferType.Loc, 42, "jd", 2026));
+        Assert.Equal("Int/0043-2027/YL/AB", ReferenceRules.Build(OfferType.Int, 43, "AB", 2027));
+        Assert.True(ReferenceRules.IsValid("Loc/0042-2026/YL/JD"));
+        Assert.True(ReferenceRules.IsValid("Int/0043-2027/YL/AB"));
+        Assert.Null(ReferenceRules.Validate("Loc/0042-2026/YL/JD", OfferType.Loc));
+        Assert.Null(ReferenceRules.Validate("Int/0043-2027/YL/AB", OfferType.Int));
     }
 
     [Fact]
-    public void TryParse_splits_type_sequence_and_initials()
+    public void Legacy_references_without_a_year_remain_valid()
     {
-        Assert.True(ReferenceRules.TryParse("Int/43/YL/jd", out var type, out var sequence, out var initials));
+        Assert.True(ReferenceRules.IsValid("Loc/42/YL/JD"));
+        Assert.Null(ReferenceRules.Validate("Loc/42/YL/JD", OfferType.Loc));
+        Assert.True(ReferenceRules.IsValid("Int/0043-2026/YL/AB"));
+    }
+
+    [Fact]
+    public void TryParse_splits_type_sequence_year_and_initials()
+    {
+        Assert.True(ReferenceRules.TryParse(
+            "Int/0043-2027/YL/jd", out var type, out var sequence, out var initials, out var year));
         Assert.Equal(OfferType.Int, type);
         Assert.Equal(43, sequence);
+        Assert.Equal(2027, year);
         Assert.Equal("JD", initials);
+
+        Assert.True(ReferenceRules.TryParse(
+            "Loc/42/YL/JD", out _, out var legacySequence, out _, out var legacyYear));
+        Assert.Equal(42, legacySequence);
+        Assert.Equal(0, legacyYear);
         Assert.False(ReferenceRules.TryParse("3089/OCT./YL/AA", out _, out _, out _));
         Assert.False(ReferenceRules.TryParse(null, out _, out _, out _));
     }
@@ -34,8 +49,16 @@ public class ReferenceRulesTests
     [Fact]
     public void WithType_changes_only_the_type_segment()
     {
-        Assert.Equal("Int/42/YL/JD", ReferenceRules.WithType("Loc/42/YL/JD", OfferType.Int));
-        Assert.Equal("Loc/42/YL/JD", ReferenceRules.WithType("Int/42/YL/JD", OfferType.Loc));
+        Assert.Equal(
+            "Int/0042-2026/YL/JD",
+            ReferenceRules.WithType("Loc/0042-2026/YL/JD", OfferType.Int, 2028));
+        Assert.Equal(
+            "Loc/0042-2026/YL/JD",
+            ReferenceRules.WithType("Int/0042-2026/YL/JD", OfferType.Loc, 2028));
+        // A legacy reference gains the issue year when the type is rewritten.
+        Assert.Equal(
+            "Int/0042-2028/YL/JD",
+            ReferenceRules.WithType("Loc/42/YL/JD", OfferType.Int, 2028));
     }
 
     [Fact]
@@ -83,6 +106,8 @@ public class ReferenceRulesTests
         Assert.Equal(3089, legacy);
         Assert.True(ReferenceRules.TryGetSequence("Loc/42/YL/JD", out var current));
         Assert.Equal(42, current);
+        Assert.True(ReferenceRules.TryGetSequence("Loc/0377-2026/YL/AA", out var padded));
+        Assert.Equal(377, padded);
         Assert.False(ReferenceRules.TryGetSequence("not-a-reference", out _));
     }
 
@@ -146,10 +171,11 @@ public class ReferenceRulesTests
         var basics = TestFactory.SeedBasics(db.Context);
         var service = TestFactory.CreateOfferService(db.Context);
 
-        var result = await service.GetNextSequenceAsync(OfferType.Loc, basics.User.Id, CancellationToken.None);
+        var result = await service.GetNextSequenceAsync(
+            OfferType.Loc, basics.User.Id, CancellationToken.None, new DateOnly(2026, 11, 23));
 
         Assert.Equal(1, result.SuggestedSequence);
-        Assert.Equal("Loc/1/YL/TU", result.SuggestedReference);
+        Assert.Equal("Loc/0001-2026/YL/TU", result.SuggestedReference);
     }
 
     [Fact]
@@ -162,12 +188,14 @@ public class ReferenceRulesTests
 
         var service = TestFactory.CreateOfferService(db.Context);
 
-        var local = await service.GetNextSequenceAsync(OfferType.Loc, basics.User.Id, CancellationToken.None);
-        var international = await service.GetNextSequenceAsync(OfferType.Int, basics.User.Id, CancellationToken.None);
+        var local = await service.GetNextSequenceAsync(
+            OfferType.Loc, basics.User.Id, CancellationToken.None, new DateOnly(2026, 11, 23));
+        var international = await service.GetNextSequenceAsync(
+            OfferType.Int, basics.User.Id, CancellationToken.None, new DateOnly(2026, 11, 23));
 
         Assert.Equal(43, local.SuggestedSequence);
-        Assert.Equal("Loc/43/YL/TU", local.SuggestedReference);
-        Assert.Equal("Int/43/YL/TU", international.SuggestedReference);
+        Assert.Equal("Loc/0043-2026/YL/TU", local.SuggestedReference);
+        Assert.Equal("Int/0043-2026/YL/TU", international.SuggestedReference);
     }
 
     [Fact]
@@ -178,10 +206,45 @@ public class ReferenceRulesTests
         TestFactory.AddOffer(db.Context, basics, "77/OCT./YL/AA", serialNumber: 0);
 
         var service = TestFactory.CreateOfferService(db.Context);
-        var result = await service.GetNextSequenceAsync(OfferType.Int, basics.User.Id, CancellationToken.None);
+        var result = await service.GetNextSequenceAsync(
+            OfferType.Int, basics.User.Id, CancellationToken.None, new DateOnly(2026, 11, 23));
 
         Assert.Equal(78, result.SuggestedSequence);
-        Assert.Equal("Int/78/YL/TU", result.SuggestedReference);
+        Assert.Equal("Int/0078-2026/YL/TU", result.SuggestedReference);
+    }
+
+    [Fact]
+    public async Task Create_takes_the_year_from_the_issue_date()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var service = TestFactory.CreateOfferService(db.Context);
+        var draft = new OfferDraftDto
+        {
+            OfferType = OfferType.Loc,
+            IssueDate = new DateOnly(2027, 1, 15),
+            CustomerId = basics.Customer.Id,
+            PaymentTermId = basics.PaymentTerm.Id
+        };
+
+        var detail = await service.CreateAsync(draft, basics.User.Id, CancellationToken.None);
+
+        Assert.Equal("Loc/0001-2027/YL/TU", detail.Reference);
+    }
+
+    [Fact]
+    public async Task Next_sequence_continues_from_a_legacy_reference()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        TestFactory.AddOffer(db.Context, basics, "Loc/0377/YL/AA", serialNumber: 0);
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var result = await service.GetNextSequenceAsync(
+            OfferType.Loc, basics.User.Id, CancellationToken.None, new DateOnly(2026, 11, 23));
+
+        Assert.Equal(378, result.SuggestedSequence);
+        Assert.Equal("Loc/0378-2026/YL/TU", result.SuggestedReference);
     }
 
     private static OfferCalculator CreateCalculator()

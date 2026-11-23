@@ -180,9 +180,9 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         laterPayload["serialNumber"] = 9000;
         var second = await CreateAndReadAsync(client, laterPayload);
 
-        Assert.Equal("Loc/3090/YL/TU", first.GetProperty("reference").GetString());
+        Assert.Equal("Loc/3090-2026/YL/TU", first.GetProperty("reference").GetString());
         // A later offer cannot pick its number; it continues from the first one.
-        Assert.Equal("Loc/3091/YL/TU", second.GetProperty("reference").GetString());
+        Assert.Equal("Loc/3091-2026/YL/TU", second.GetProperty("reference").GetString());
 
         next = await ReadJsonAsync(await client.GetAsync("/api/offers/next-sequence?offerType=Loc"));
         Assert.False(next.GetProperty("isFirstOffer").GetBoolean());
@@ -203,7 +203,7 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var updated = await ReadJsonAsync(response);
-        Assert.Equal($"Int/{sequence}/YL/TU", updated.GetProperty("reference").GetString());
+        Assert.Equal($"Int/{sequence:0000}-2026/YL/TU", updated.GetProperty("reference").GetString());
     }
 
     [Fact]
