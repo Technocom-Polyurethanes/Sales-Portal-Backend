@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.core.Live;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
@@ -29,10 +30,12 @@ public class UserService : IUserService
         @"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly IRepository<User> _users;
+    private readonly IChangeBroadcaster _changes;
 
-    public UserService(IRepository<User> users)
+    public UserService(IRepository<User> users, IChangeBroadcaster? changes = null)
     {
         _users = users;
+        _changes = changes ?? NoChangeBroadcaster.Instance;
     }
 
     public async Task<PaginatedResultDto<UserDto>> GetPagedAsync(
@@ -137,6 +140,7 @@ public class UserService : IUserService
 
         await _users.AddAsync(user);
         await _users.SaveChangesAsync(cancellationToken);
+        _changes.Publish([ChangeTopics.Users]);
         return Map(user);
     }
 
@@ -185,6 +189,7 @@ public class UserService : IUserService
         user.IsActive = newIsActive;
 
         await _users.SaveChangesAsync(cancellationToken);
+        _changes.Publish([ChangeTopics.Users]);
         return Map(user);
     }
 
@@ -201,6 +206,7 @@ public class UserService : IUserService
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
         await _users.SaveChangesAsync(cancellationToken);
+        _changes.Publish([ChangeTopics.Users]);
     }
 
     private static Dictionary<string, string[]> ValidateProfile(
