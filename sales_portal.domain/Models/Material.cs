@@ -20,5 +20,6 @@ namespace sales_portal.domain.Models
         public Guid? DefaultPackageTypeId { get; set; }
         public PackageType? DefaultPackageType { get; set; }
         public decimal DefaultWeightKg { get; set; } = 210m;
+        public bool IsDeleted { get; set; }
     }
 }

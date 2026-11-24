@@ -203,6 +203,41 @@ public class UserService : IUserService
         await _users.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        Guid actingUserId,
+        CancellationToken cancellationToken)
+    {
+        var user = await _users.GetAll()
+            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        if (user == null)
+        {
+            return false;
+        }
+
+        if (id == actingUserId)
+        {
+            throw new ConflictException("You cannot delete your own account.");
+        }
+
+        if (user.Role == UserRole.Admin && user.IsActive)
+        {
+            var otherActiveAdmins = await _users.GetAll()
+                .CountAsync(
+                    u => u.Id != id && u.Role == UserRole.Admin && u.IsActive,
+                    cancellationToken);
+            if (otherActiveAdmins == 0)
+            {
+                throw new ConflictException("At least one active administrator is required.");
+            }
+        }
+
+        user.IsDeleted = true;
+        user.IsActive = false;
+        await _users.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static Dictionary<string, string[]> ValidateProfile(
         string? fullName,
         string? initials,

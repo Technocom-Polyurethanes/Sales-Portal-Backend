@@ -282,14 +282,14 @@ public class OfferService : IOfferService
         Guid? currentUserId,
         CancellationToken cancellationToken)
     {
-        var maxSeq = await _offers.GetAll()
-            .AsNoTracking()
+        // Deleted offers still own their reference, so they must not let the sequence go back.
+        var allOffers = _offers.GetAll().IgnoreQueryFilters().AsNoTracking();
+        var maxSeq = await allOffers
             .MaxAsync(o => (int?)o.SerialNumber, cancellationToken) ?? 0;
 
         // Older rows may not have a stored serial number, so also read it from their
         // reference. New references carry it as the second segment, legacy ones as the first.
-        var references = await _offers.GetAll()
-            .AsNoTracking()
+        var references = await allOffers
             .Select(o => o.Reference)
             .ToListAsync(cancellationToken);
 
@@ -600,6 +600,23 @@ public class OfferService : IOfferService
             ?? throw new NotFoundException("Offer was not found after status update.");
     }
 
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var offer = await _offers.GetAll()
+            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+        if (offer == null)
+        {
+            return false;
+        }
+
+        offer.IsDeleted = true;
+        await _offers.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Offers);
+        return true;
+    }
+
     // Drafts may be saved incomplete, so "at least one line" is enforced only when issuing.
     private async Task ValidateForIssueAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -632,7 +649,7 @@ public class OfferService : IOfferService
         CancellationToken cancellationToken)
     {
         var rootOfferId = draft.RootOfferId;
-        var taken = await _offers.GetAll().AnyAsync(
+        var taken = await _offers.GetAll().IgnoreQueryFilters().AnyAsync(
             o => o.Reference == draft.Reference &&
                  (rootOfferId == null || o.RootOfferId != rootOfferId) &&
                  (excludeOfferId == null || o.Id != excludeOfferId),

@@ -71,4 +71,17 @@ public class UsersController : ControllerBase
         await _userService.ResetPasswordAsync(id, request, cancellationToken);
         return NoContent();
     }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteUser(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var actingUserId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsed)
+            ? parsed
+            : Guid.Empty;
+        return await _userService.DeleteAsync(id, actingUserId, cancellationToken)
+            ? NoContent()
+            : NotFound();
+    }
 }

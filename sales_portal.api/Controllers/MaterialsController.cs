@@ -82,4 +82,15 @@ public class MaterialsController : ControllerBase
         var material = await _materialService.UpdateAsync(id, request, cancellationToken);
         return material == null ? NotFound() : Ok(material);
     }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = Policies.CatalogDelete)]
+    public async Task<IActionResult> DeleteMaterial(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        return await _materialService.DeleteAsync(id, cancellationToken)
+            ? NoContent()
+            : NotFound();
+    }
 }

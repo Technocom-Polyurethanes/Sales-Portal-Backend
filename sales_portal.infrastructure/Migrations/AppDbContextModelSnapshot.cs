@@ -79,6 +79,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer")
                         .HasColumnName("sort_order");
@@ -232,6 +236,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("erp_next_id");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(250)
@@ -259,7 +267,8 @@ namespace sales_portal.infrastructure.Migrations
 
                     b.HasIndex("CustomerCode")
                         .IsUnique()
-                        .HasDatabaseName("ix_customers_customer_code");
+                        .HasDatabaseName("ix_customers_customer_code")
+                        .HasFilter("\"is_deleted\" = false");
 
                     b.HasIndex("DefaultPaymentTermId")
                         .HasDatabaseName("ix_customers_default_payment_term_id");
@@ -375,6 +384,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
                     b.Property<string>("ItemCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -408,7 +421,8 @@ namespace sales_portal.infrastructure.Migrations
 
                     b.HasIndex("ItemCode")
                         .IsUnique()
-                        .HasDatabaseName("ix_materials_item_code");
+                        .HasDatabaseName("ix_materials_item_code")
+                        .HasFilter("\"is_deleted\" = false");
 
                     b.ToTable("materials", (string)null);
                 });
@@ -478,6 +492,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("form_code");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
                     b.Property<DateOnly>("IssueDate")
                         .HasColumnType("date")
                         .HasColumnName("issue_date");
@@ -485,6 +503,12 @@ namespace sales_portal.infrastructure.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("text")
                         .HasColumnName("notes");
+
+                    b.Property<string>("OfferType")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("offer_type");
 
                     b.Property<decimal>("OrderDiscount")
                         .HasColumnType("decimal(18,2)")
@@ -627,7 +651,8 @@ namespace sales_portal.infrastructure.Migrations
 
                     b.HasIndex("RootOfferId", "Version")
                         .IsUnique()
-                        .HasDatabaseName("ix_offers_root_offer_id_version");
+                        .HasDatabaseName("ix_offers_root_offer_id_version")
+                        .HasFilter("\"is_deleted\" = false");
 
                     b.ToTable("offers", (string)null);
                 });
@@ -991,6 +1016,10 @@ namespace sales_portal.infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()

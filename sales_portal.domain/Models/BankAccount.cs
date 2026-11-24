@@ -20,5 +20,6 @@ namespace sales_portal.domain.Models
         public string Currency { get; set; } = "EGP";
         public int SortOrder { get; set; }
         public bool IsActive { get; set; } = true;                 // all active banks print on every offer
+        public bool IsDeleted { get; set; }
     }
 }

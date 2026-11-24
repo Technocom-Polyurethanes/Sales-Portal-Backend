@@ -227,6 +227,24 @@ public class MaterialService : IMaterialService
         return await GetByIdAsync(material.Id, cancellationToken);
     }
 
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var material = await _materials.GetAll()
+            .FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
+        if (material == null)
+        {
+            return false;
+        }
+
+        material.IsDeleted = true;
+        material.IsActive = false;
+        await _materials.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Materials, CacheRegions.Catalog);
+        return true;
+    }
+
     private IQueryable<Material> BuildSearchQuery(string? search)
     {
         var query = _materials.GetAll().AsNoTracking().AsQueryable();

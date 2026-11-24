@@ -34,6 +34,8 @@ or deleted user returns `401`. A role the user lacks returns `403` ProblemDetail
 | Create, edit, revise and change the status of offers | yes | yes | read only |
 | Create a customer, material or bank account | yes | yes | yes |
 | Edit an existing customer, material or bank account | yes | no | yes |
+| Delete a customer, material or bank account | yes | yes | yes |
+| Delete an offer | yes | yes | no |
 | Data import (templates, preview, commit, history) | yes | no | yes |
 | Company settings (`PUT /api/settings`) | yes | no | no |
 | Users (`/api/users`) | yes | no | no |

@@ -32,7 +32,8 @@ public class OfferConfiguration : IEntityTypeConfiguration<Offer>
 
         // The reference may change between versions, so a version is identified by its chain.
         builder.HasIndex(o => new { o.RootOfferId, o.Version })
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("\"is_deleted\" = false");
 
         builder.HasIndex(o => o.Reference);
 

@@ -21,4 +21,7 @@ public interface IUserService
     Task<UserDto> UpdateAsync(Guid id, UpdateUserDto dto, Guid actingUserId, CancellationToken cancellationToken);
 
     Task ResetPasswordAsync(Guid id, ResetPasswordDto dto, CancellationToken cancellationToken);
+
+    /// <summary><paramref name="actingUserId"/> is the admin making the change, used to block self lock-out.</summary>
+    Task<bool> DeleteAsync(Guid id, Guid actingUserId, CancellationToken cancellationToken);
 }

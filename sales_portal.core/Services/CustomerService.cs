@@ -343,6 +343,23 @@ public class CustomerService : ICustomerService
         return MapDetail(customer);
     }
 
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var customer = await _customers.GetAll()
+            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        if (customer == null)
+        {
+            return false;
+        }
+
+        customer.IsDeleted = true;
+        await _customers.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Customers, CacheRegions.Offers);
+        return true;
+    }
+
     private IQueryable<Customer> BuildSearchQuery(string? search)
     {
         var query = _customers.GetAll().AsNoTracking().AsQueryable();

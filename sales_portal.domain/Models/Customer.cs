@@ -24,6 +24,7 @@ namespace sales_portal.domain.Models
         public Guid? DefaultPaymentTermId { get; set; }
         public PaymentTerm? DefaultPaymentTerm { get; set; }
         public string DefaultCurrency { get; set; } = "EGP";
+        public bool IsDeleted { get; set; }
 
         // OffersCount, TotalValue, LastOfferDate are computed from Offers (not stored).
         public ICollection<Offer> Offers { get; set; } = new List<Offer>();

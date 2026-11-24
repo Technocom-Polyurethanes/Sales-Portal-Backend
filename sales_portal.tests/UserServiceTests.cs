@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.Services;
@@ -159,6 +160,40 @@ public class UserServiceTests
             target.Id, UpdateFor(target, UserRole.Accountant), actor.Id, CancellationToken.None);
 
         Assert.Equal(UserRole.Accountant, updated.Role);
+    }
+
+    [Fact]
+    public async Task Delete_cannot_remove_yourself_or_the_last_active_admin()
+    {
+        using var db = new TestDatabase();
+        var service = CreateService(db);
+        var me = AddUser(db, "me", UserRole.Admin);
+        var other = AddUser(db, "other", UserRole.Admin);
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => service.DeleteAsync(me.Id, me.Id, CancellationToken.None));
+
+        other.IsActive = false;
+        db.Context.SaveChanges();
+        await Assert.ThrowsAsync<ConflictException>(
+            () => service.DeleteAsync(me.Id, other.Id, CancellationToken.None));
+
+        Assert.Empty(db.Context.Users.IgnoreQueryFilters().Where(u => u.IsDeleted));
+    }
+
+    [Fact]
+    public async Task Delete_hides_the_user_but_keeps_the_row()
+    {
+        using var db = new TestDatabase();
+        var service = CreateService(db);
+        var actor = AddUser(db, "actor", UserRole.Admin);
+        var target = AddUser(db, "target", UserRole.Sales);
+
+        Assert.True(await service.DeleteAsync(target.Id, actor.Id, CancellationToken.None));
+
+        Assert.Equal(1, db.Context.Users.Count());
+        Assert.True(db.Context.Users.IgnoreQueryFilters().Single(u => u.Id == target.Id).IsDeleted);
+        Assert.False(db.Context.Users.IgnoreQueryFilters().Single(u => u.Id == target.Id).IsActive);
     }
 
     [Fact]

@@ -62,6 +62,7 @@ namespace sales_portal.domain.Models
         public decimal Total { get; set; }                          // final bottom row total
 
         public string SnapshotJson { get; set; } = "{}";            // jsonb, immutable copy of the printed document
+        public bool IsDeleted { get; set; }
 
         public ICollection<OfferLine> Lines { get; set; } = new List<OfferLine>();
         public ICollection<OfferDeliveryBatch> DeliveryBatches { get; set; } = new List<OfferDeliveryBatch>();
