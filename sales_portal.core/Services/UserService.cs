@@ -29,10 +29,12 @@ public class UserService : IUserService
         @"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly IRepository<User> _users;
+    private readonly IRepository<Offer> _offers;
 
-    public UserService(IRepository<User> users)
+    public UserService(IRepository<User> users, IRepository<Offer> offers)
     {
         _users = users;
+        _offers = offers;
     }
 
     public async Task<PaginatedResultDto<UserDto>> GetPagedAsync(
@@ -232,8 +234,18 @@ public class UserService : IUserService
             }
         }
 
-        user.IsDeleted = true;
-        user.IsActive = false;
+        // Offers reference both the creator and last editor, so remove those chains first.
+        var roots = await _offers.GetAll()
+            .Where(o => o.CreatedByUserId == id || o.UpdatedByUserId == id)
+            .Select(o => o.RootOfferId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var offers = await _offers.GetAll()
+            .Where(o => roots.Contains(o.RootOfferId))
+            .ToListAsync(cancellationToken);
+        _offers.RemoveRange(offers);
+
+        _users.Remove(user);
         await _users.SaveChangesAsync(cancellationToken);
         return true;
     }

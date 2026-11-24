@@ -282,8 +282,7 @@ public class OfferService : IOfferService
         Guid? currentUserId,
         CancellationToken cancellationToken)
     {
-        // Deleted offers still own their reference, so they must not let the sequence go back.
-        var allOffers = _offers.GetAll().IgnoreQueryFilters().AsNoTracking();
+        var allOffers = _offers.GetAll().AsNoTracking();
         var maxSeq = await allOffers
             .MaxAsync(o => (int?)o.SerialNumber, cancellationToken) ?? 0;
 
@@ -604,14 +603,21 @@ public class OfferService : IOfferService
         Guid id,
         CancellationToken cancellationToken)
     {
-        var offer = await _offers.GetAll()
-            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
-        if (offer == null)
+        var rootId = await _offers.GetAll()
+            .Where(o => o.Id == id)
+            .Select(o => (Guid?)o.RootOfferId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (rootId == null)
         {
             return false;
         }
 
-        offer.IsDeleted = true;
+        // One delete removes the whole chain, whichever version was selected in the UI.
+        var versions = await _offers.GetAll()
+            .Where(o => o.RootOfferId == rootId.Value)
+            .ToListAsync(cancellationToken);
+        _offers.RemoveRange(versions);
+
         await _offers.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Offers);
         return true;
@@ -649,7 +655,7 @@ public class OfferService : IOfferService
         CancellationToken cancellationToken)
     {
         var rootOfferId = draft.RootOfferId;
-        var taken = await _offers.GetAll().IgnoreQueryFilters().AnyAsync(
+        var taken = await _offers.GetAll().AnyAsync(
             o => o.Reference == draft.Reference &&
                  (rootOfferId == null || o.RootOfferId != rootOfferId) &&
                  (excludeOfferId == null || o.Id != excludeOfferId),

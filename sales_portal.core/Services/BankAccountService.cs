@@ -114,8 +114,7 @@ public class BankAccountService : IBankAccountService
             return false;
         }
 
-        account.IsDeleted = true;
-        account.IsActive = false;
+        _bankAccounts.Remove(account);
         await _bankAccounts.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Catalog);
         return true;

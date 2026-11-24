@@ -11,7 +11,9 @@ namespace SalesPortal.Tests;
 
 public class UserServiceTests
 {
-    private static UserService CreateService(TestDatabase db) => new(new Repository<User>(db.Context));
+    private static UserService CreateService(TestDatabase db) => new(
+        new Repository<User>(db.Context),
+        new Repository<Offer>(db.Context));
 
     private static CreateUserDto NewUser(string username = "jdoe", UserRole? role = UserRole.Sales) => new()
     {
@@ -178,11 +180,11 @@ public class UserServiceTests
         await Assert.ThrowsAsync<ConflictException>(
             () => service.DeleteAsync(me.Id, other.Id, CancellationToken.None));
 
-        Assert.Empty(db.Context.Users.IgnoreQueryFilters().Where(u => u.IsDeleted));
+        Assert.Equal(2, db.Context.Users.Count());
     }
 
     [Fact]
-    public async Task Delete_hides_the_user_but_keeps_the_row()
+    public async Task Delete_removes_the_user_row()
     {
         using var db = new TestDatabase();
         var service = CreateService(db);
@@ -191,9 +193,8 @@ public class UserServiceTests
 
         Assert.True(await service.DeleteAsync(target.Id, actor.Id, CancellationToken.None));
 
-        Assert.Equal(1, db.Context.Users.Count());
-        Assert.True(db.Context.Users.IgnoreQueryFilters().Single(u => u.Id == target.Id).IsDeleted);
-        Assert.False(db.Context.Users.IgnoreQueryFilters().Single(u => u.Id == target.Id).IsActive);
+        Assert.Equal(actor.Id, db.Context.Users.Single().Id);
+        Assert.DoesNotContain(db.Context.Users, u => u.Id == target.Id);
     }
 
     [Fact]

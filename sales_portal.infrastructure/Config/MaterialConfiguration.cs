@@ -15,8 +15,7 @@ public class MaterialConfiguration : IEntityTypeConfiguration<Material>
             .HasMaxLength(50);
 
         builder.HasIndex(m => m.ItemCode)
-            .IsUnique()
-            .HasFilter("\"is_deleted\" = false");
+            .IsUnique();
 
         builder.Property(m => m.Name)
             .IsRequired()

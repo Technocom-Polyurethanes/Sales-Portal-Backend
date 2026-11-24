@@ -28,13 +28,6 @@ public class AppDbContext : DbContext
 
         // Automatically applies all IEntityTypeConfiguration<T> classes in this assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-
-        // Deleted records stay in the database so existing offers keep their history.
-        modelBuilder.Entity<Customer>().HasQueryFilter(customer => !customer.IsDeleted);
-        modelBuilder.Entity<Material>().HasQueryFilter(material => !material.IsDeleted);
-        modelBuilder.Entity<BankAccount>().HasQueryFilter(account => !account.IsDeleted);
-        modelBuilder.Entity<Offer>().HasQueryFilter(offer => !offer.IsDeleted);
-        modelBuilder.Entity<User>().HasQueryFilter(user => !user.IsDeleted);
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

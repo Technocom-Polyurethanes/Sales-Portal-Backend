@@ -20,7 +20,6 @@ namespace sales_portal.domain.Models
         public string PasswordHash { get; set; } = default!;      // BCrypt
         public UserRole Role { get; set; } = UserRole.Sales;
         public bool IsActive { get; set; } = true;
-        public bool IsDeleted { get; set; }
 
         public ICollection<Offer> Offers { get; set; } = new List<Offer>();
     }

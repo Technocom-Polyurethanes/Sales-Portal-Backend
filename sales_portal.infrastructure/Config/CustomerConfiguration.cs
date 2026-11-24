@@ -15,8 +15,7 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             .HasMaxLength(50);
 
         builder.HasIndex(c => c.CustomerCode)
-            .IsUnique()
-            .HasFilter("\"is_deleted\" = false");
+            .IsUnique();
 
         builder.Property(c => c.Name)
             .IsRequired()
