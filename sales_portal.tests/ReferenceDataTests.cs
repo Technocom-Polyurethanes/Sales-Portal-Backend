@@ -100,7 +100,9 @@ public class ReferenceDataTests
             NewMaterial("30001", "Suprasec"),
             NewMaterial("20000", "Retired", isActive: false));
         await db.Context.SaveChangesAsync();
-        var service = new MaterialService(new Repository<Material>(db.Context));
+        var service = new MaterialService(
+            new Repository<Material>(db.Context),
+            new Repository<Offer>(db.Context));
 
         var all = await service.GetAllAsync(null, null, null, CancellationToken.None);
         var lookup = await service.LookupAsync(FirstPage(), CancellationToken.None);
@@ -119,7 +121,10 @@ public class ReferenceDataTests
         using var db = new TestDatabase();
         db.Context.Customers.Add(NewCustomer("CUST-1", "One"));
         await db.Context.SaveChangesAsync();
-        var service = new CustomerService(new Repository<Customer>(db.Context), NewCache());
+        var service = new CustomerService(
+            new Repository<Customer>(db.Context),
+            new Repository<Offer>(db.Context),
+            NewCache());
 
         var first = await service.LookupAsync(FirstPage(), CancellationToken.None);
         Assert.Single(first.Items);
@@ -146,7 +151,10 @@ public class ReferenceDataTests
         using var db = new TestDatabase();
         db.Context.Materials.Add(NewMaterial("MAT-1", "One"));
         await db.Context.SaveChangesAsync();
-        var service = new MaterialService(new Repository<Material>(db.Context), NewCache());
+        var service = new MaterialService(
+            new Repository<Material>(db.Context),
+            new Repository<Offer>(db.Context),
+            NewCache());
 
         Assert.Single((await service.LookupAsync(FirstPage(), CancellationToken.None)).Items);
 

@@ -59,7 +59,7 @@ internal static class TestFactory
     }
 
     public static CustomerService CreateCustomerService(AppDbContext context)
-        => new(new Repository<Customer>(context));
+        => new(new Repository<Customer>(context), new Repository<Offer>(context));
 
     public static BankAccountService CreateBankAccountService(
         AppDbContext context,

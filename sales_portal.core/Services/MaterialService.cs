@@ -14,11 +14,16 @@ public class MaterialService : IMaterialService
     private static readonly string[] MaterialRegions = [CacheRegions.Materials, CacheRegions.Catalog];
 
     private readonly IRepository<Material> _materials;
+    private readonly IRepository<Offer> _offers;
     private readonly IReferenceDataCache _cache;
 
-    public MaterialService(IRepository<Material> materials, IReferenceDataCache? cache = null)
+    public MaterialService(
+        IRepository<Material> materials,
+        IRepository<Offer> offers,
+        IReferenceDataCache? cache = null)
     {
         _materials = materials;
+        _offers = offers;
         _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
@@ -225,6 +230,34 @@ public class MaterialService : IMaterialService
         _cache.Invalidate(CacheRegions.Materials);
 
         return await GetByIdAsync(material.Id, cancellationToken);
+    }
+
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var material = await _materials.GetAll()
+            .FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
+        if (material == null)
+        {
+            return false;
+        }
+
+        // Offer lines reference materials, so remove the chains that used this one.
+        var roots = await _offers.GetAll()
+            .Where(o => o.Lines.Any(l => l.MaterialId == id))
+            .Select(o => o.RootOfferId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var offers = await _offers.GetAll()
+            .Where(o => roots.Contains(o.RootOfferId))
+            .ToListAsync(cancellationToken);
+        _offers.RemoveRange(offers);
+
+        _materials.Remove(material);
+        await _materials.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Materials, CacheRegions.Catalog, CacheRegions.Offers);
+        return true;
     }
 
     private IQueryable<Material> BuildSearchQuery(string? search)

@@ -283,14 +283,13 @@ public class OfferService : IOfferService
         CancellationToken cancellationToken,
         DateOnly? issueDate = null)
     {
-        var maxSeq = await _offers.GetAll()
-            .AsNoTracking()
+        var allOffers = _offers.GetAll().AsNoTracking();
+        var maxSeq = await allOffers
             .MaxAsync(o => (int?)o.SerialNumber, cancellationToken) ?? 0;
 
         // Older rows may not have a stored serial number, so also read it from their
         // reference. New references carry it as the second segment, legacy ones as the first.
-        var references = await _offers.GetAll()
-            .AsNoTracking()
+        var references = await allOffers
             .Select(o => o.Reference)
             .ToListAsync(cancellationToken);
 
@@ -603,6 +602,30 @@ public class OfferService : IOfferService
 
         return await GetByIdAsync(id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after status update.");
+    }
+
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var rootId = await _offers.GetAll()
+            .Where(o => o.Id == id)
+            .Select(o => (Guid?)o.RootOfferId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (rootId == null)
+        {
+            return false;
+        }
+
+        // One delete removes the whole chain, whichever version was selected in the UI.
+        var versions = await _offers.GetAll()
+            .Where(o => o.RootOfferId == rootId.Value)
+            .ToListAsync(cancellationToken);
+        _offers.RemoveRange(versions);
+
+        await _offers.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Offers);
+        return true;
     }
 
     // Drafts may be saved incomplete, so "at least one line" is enforced only when issuing.

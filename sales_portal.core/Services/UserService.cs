@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -29,10 +30,17 @@ public class UserService : IUserService
         @"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly IRepository<User> _users;
+    private readonly IRepository<Offer> _offers;
+    private readonly IReferenceDataCache _cache;
 
-    public UserService(IRepository<User> users)
+    public UserService(
+        IRepository<User> users,
+        IRepository<Offer> offers,
+        IReferenceDataCache? cache = null)
     {
         _users = users;
+        _offers = offers;
+        _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
     public async Task<PaginatedResultDto<UserDto>> GetPagedAsync(
@@ -201,6 +209,52 @@ public class UserService : IUserService
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
         await _users.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        Guid actingUserId,
+        CancellationToken cancellationToken)
+    {
+        var user = await _users.GetAll()
+            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        if (user == null)
+        {
+            return false;
+        }
+
+        if (id == actingUserId)
+        {
+            throw new ConflictException("You cannot delete your own account.");
+        }
+
+        if (user.Role == UserRole.Admin && user.IsActive)
+        {
+            var otherActiveAdmins = await _users.GetAll()
+                .CountAsync(
+                    u => u.Id != id && u.Role == UserRole.Admin && u.IsActive,
+                    cancellationToken);
+            if (otherActiveAdmins == 0)
+            {
+                throw new ConflictException("At least one active administrator is required.");
+            }
+        }
+
+        // Offers reference both the creator and last editor, so remove those chains first.
+        var roots = await _offers.GetAll()
+            .Where(o => o.CreatedByUserId == id || o.UpdatedByUserId == id)
+            .Select(o => o.RootOfferId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var offers = await _offers.GetAll()
+            .Where(o => roots.Contains(o.RootOfferId))
+            .ToListAsync(cancellationToken);
+        _offers.RemoveRange(offers);
+
+        _users.Remove(user);
+        await _users.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Offers);
+        return true;
     }
 
     private static Dictionary<string, string[]> ValidateProfile(

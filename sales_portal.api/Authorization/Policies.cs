@@ -25,6 +25,12 @@ public static class Policies
     /// <summary>Edit an existing customer, material or bank account.</summary>
     public const string CatalogEdit = nameof(CatalogEdit);
 
+    /// <summary>Delete a customer, material or bank account.</summary>
+    public const string CatalogDelete = nameof(CatalogDelete);
+
+    /// <summary>Delete an offer. Deactivated users are kept, so this is not a user policy.</summary>
+    public const string OffersDelete = nameof(OffersDelete);
+
     /// <summary>Data import: templates, preview, commit and history.</summary>
     public const string Import = nameof(Import);
 
@@ -37,6 +43,8 @@ public static class Policies
         Add(options, OffersWrite, UserRole.Admin, UserRole.Sales);
         Add(options, CatalogCreate, UserRole.Admin, UserRole.Sales, UserRole.Accountant);
         Add(options, CatalogEdit, UserRole.Admin, UserRole.Accountant);
+        Add(options, CatalogDelete, UserRole.Admin, UserRole.Sales, UserRole.Accountant);
+        Add(options, OffersDelete, UserRole.Admin, UserRole.Sales);
         Add(options, Import, UserRole.Admin, UserRole.Accountant);
         Add(options, SettingsWrite, UserRole.Admin);
     }

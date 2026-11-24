@@ -34,6 +34,8 @@ or deleted user returns `401`. A role the user lacks returns `403` ProblemDetail
 | Create, edit, revise and change the status of offers | yes | yes | read only |
 | Create a customer, material or bank account | yes | yes | yes |
 | Edit an existing customer, material or bank account | yes | no | yes |
+| Delete a customer, material or bank account | yes | yes | yes |
+| Delete an offer | yes | yes | no |
 | Data import (templates, preview, commit, history) | yes | no | yes |
 | Company settings (`PUT /api/settings`) | yes | no | no |
 | Users (`/api/users`) | yes | no | no |
@@ -265,6 +267,8 @@ the reference changes. Versions are grouped by `rootOfferId`, not by `reference`
   server sets `version` to the highest version of the chain + 1 and ignores the value
   sent. The `reference` may be changed in the new version and the chain stays the same.
 - `POST /api/offers/{id}/revise` copies the offer as the next version with the same reference.
+- `DELETE /api/offers/{id}` permanently removes the parent and every version in the chain,
+  including their lines and delivery batches.
 - A `reference` that belongs to another offer returns `409` ("An offer with this reference already exists.").
 
 ### Reference rules
@@ -352,7 +356,7 @@ the offer detail accept `bankAccountIds`:
 - An unknown or inactive id returns `400` ("Bank account … was not found or is
   inactive.").
 - The selection is stored as `bank_account_ids` (PostgreSQL `uuid[]`) with **no foreign
-  key**: deleting an account in Settings never fails because an offer used it.
+  key**: deleting an account never fails because an offer used it.
 - The snapshot and printed document list only the selected accounts, ordered by
   `sortOrder`.
 - `POST /api/offers/{id}/revise` copies the selection from the source version.
@@ -456,8 +460,8 @@ Create: Admin, Sales and Accountant. Edit: Admin and Accountant.
 
 Accept the account fields without `id`. `bank`, `branch` and `accountNumber` are
 required. A missing or zero `sortOrder` is appended to the end of the list. There is
-no delete endpoint on purpose: offers store bank ids without a foreign key, so an
-unused account is deactivated with `isActive: false` instead.
+Delete: Admin, Sales and Accountant (`DELETE /api/banks/{id}`). Offers store bank ids
+without a foreign key, so deleting an account never fails because an offer used it.
 
 ## Settings and bank accounts
 
@@ -761,9 +765,10 @@ The paged commit log, newest first. Only committed imports are listed.
 
 ## Users (Admin)
 
-Admin only. There is no delete endpoint: offers keep the user that created them, so an
-account is deactivated with `isActive: false` instead. A deactivated user cannot sign in
-and their existing token stops working on the next request.
+Admin only. Accounts can be deactivated with `isActive: false` or deleted with
+`DELETE /api/users/{id}`. A deactivated or deleted user cannot sign in and their existing
+token stops working on the next request. Self-delete and deleting the last active admin
+return `409`.
 
 `UserDto`: `id`, `username`, `fullName`, `initials`, `email`, `role` (`Admin`, `Sales` or
 `Accountant`), `roleTitle`, `roleTitleAr`, `team`, `teamAr`, `isActive`, `createdAt`,

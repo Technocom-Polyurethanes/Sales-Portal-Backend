@@ -148,6 +148,17 @@ public class OffersController : ControllerBase
         return Ok(await _offerService.UpdateStatusAsync(id, request, userId.Value, cancellationToken));
     }
 
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = Policies.OffersDelete)]
+    public async Task<IActionResult> DeleteOffer(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        return await _offerService.DeleteAsync(id, cancellationToken)
+            ? NoContent()
+            : NotFound();
+    }
+
     private Guid? CurrentUserId()
     {
         var rawId = User.FindFirstValue(ClaimTypes.NameIdentifier);
