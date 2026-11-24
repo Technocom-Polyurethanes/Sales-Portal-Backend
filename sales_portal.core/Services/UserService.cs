@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -30,11 +31,16 @@ public class UserService : IUserService
 
     private readonly IRepository<User> _users;
     private readonly IRepository<Offer> _offers;
+    private readonly IReferenceDataCache _cache;
 
-    public UserService(IRepository<User> users, IRepository<Offer> offers)
+    public UserService(
+        IRepository<User> users,
+        IRepository<Offer> offers,
+        IReferenceDataCache? cache = null)
     {
         _users = users;
         _offers = offers;
+        _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
     public async Task<PaginatedResultDto<UserDto>> GetPagedAsync(
@@ -247,6 +253,7 @@ public class UserService : IUserService
 
         _users.Remove(user);
         await _users.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Offers);
         return true;
     }
 
