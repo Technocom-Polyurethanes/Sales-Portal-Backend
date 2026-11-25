@@ -38,6 +38,9 @@ public class RoleAuthorizationTests : IClassFixture<SalesPortalApiFactory>
         Assert.Equal(
             HttpStatusCode.Forbidden,
             (await client.PostAsJsonAsync($"/api/users/{Guid.NewGuid()}/reset-password", EmptyBody)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await client.DeleteAsync($"/api/users/{Guid.NewGuid()}")).StatusCode);
     }
 
     [Fact]
@@ -45,6 +48,9 @@ public class RoleAuthorizationTests : IClassFixture<SalesPortalApiFactory>
     {
         using var anonymous = _factory.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/users")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await anonymous.DeleteAsync($"/api/users/{Guid.NewGuid()}")).StatusCode);
 
         using var admin = _factory.CreateAuthenticatedClient(role: "Admin");
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/users")).StatusCode);
@@ -64,6 +70,7 @@ public class RoleAuthorizationTests : IClassFixture<SalesPortalApiFactory>
         Assert.Equal(
             HttpStatusCode.Forbidden,
             (await client.PatchAsJsonAsync($"/api/offers/{id}/status", new { status = "Issued" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.DeleteAsync($"/api/offers/{id}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/offers/next-sequence")).StatusCode);
     }
 
@@ -74,6 +81,7 @@ public class RoleAuthorizationTests : IClassFixture<SalesPortalApiFactory>
         var id = Guid.NewGuid();
 
         AssertAllowed(await client.PostAsJsonAsync("/api/offers/calculate", EmptyBody));
+        AssertAllowed(await client.DeleteAsync($"/api/offers/{id}"));
         AssertAllowed(await client.PostAsJsonAsync("/api/customers", EmptyBody));
         AssertAllowed(await client.PostAsJsonAsync("/api/materials", EmptyBody));
         AssertAllowed(await client.PostAsJsonAsync("/api/banks", EmptyBody));
@@ -83,6 +91,9 @@ public class RoleAuthorizationTests : IClassFixture<SalesPortalApiFactory>
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync($"/api/customers/{id}", EmptyBody)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync($"/api/materials/{id}", EmptyBody)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync($"/api/banks/{id}", EmptyBody)).StatusCode);
+        AssertAllowed(await client.DeleteAsync($"/api/customers/{id}"));
+        AssertAllowed(await client.DeleteAsync($"/api/materials/{id}"));
+        AssertAllowed(await client.DeleteAsync($"/api/banks/{id}"));
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync("/api/settings", EmptyBody)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/import/history")).StatusCode);
     }
@@ -98,6 +109,10 @@ public class RoleAuthorizationTests : IClassFixture<SalesPortalApiFactory>
         AssertAllowed(await client.PutAsJsonAsync($"/api/customers/{id}", EmptyBody));
         AssertAllowed(await client.PutAsJsonAsync($"/api/materials/{id}", EmptyBody));
         AssertAllowed(await client.PutAsJsonAsync($"/api/banks/{id}", EmptyBody));
+        AssertAllowed(await client.DeleteAsync($"/api/customers/{id}"));
+        AssertAllowed(await client.DeleteAsync($"/api/materials/{id}"));
+        AssertAllowed(await client.DeleteAsync($"/api/banks/{id}"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.DeleteAsync($"/api/offers/{id}")).StatusCode);
 
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync("/api/settings", EmptyBody)).StatusCode);
     }

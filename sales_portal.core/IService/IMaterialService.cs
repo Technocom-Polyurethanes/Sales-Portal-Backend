@@ -11,4 +11,5 @@ public interface IMaterialService
     Task<MaterialDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<MaterialDto> CreateAsync(UpsertMaterialDto dto, CancellationToken cancellationToken);
     Task<MaterialDto?> UpdateAsync(Guid id, UpsertMaterialDto dto, CancellationToken cancellationToken);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
 }

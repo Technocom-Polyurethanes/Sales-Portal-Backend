@@ -180,9 +180,9 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
         laterPayload["serialNumber"] = 9000;
         var second = await CreateAndReadAsync(client, laterPayload);
 
-        Assert.Equal("Loc/3090/YL/TU", first.GetProperty("reference").GetString());
+        Assert.Equal("Loc/3090-2026/YL/TU", first.GetProperty("reference").GetString());
         // A later offer cannot pick its number; it continues from the first one.
-        Assert.Equal("Loc/3091/YL/TU", second.GetProperty("reference").GetString());
+        Assert.Equal("Loc/3091-2026/YL/TU", second.GetProperty("reference").GetString());
 
         next = await ReadJsonAsync(await client.GetAsync("/api/offers/next-sequence?offerType=Loc"));
         Assert.False(next.GetProperty("isFirstOffer").GetBoolean());
@@ -203,7 +203,25 @@ public class OfferWorkflowTests : IClassFixture<SalesPortalApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var updated = await ReadJsonAsync(response);
-        Assert.Equal($"Int/{sequence}/YL/TU", updated.GetProperty("reference").GetString());
+        Assert.Equal($"Int/{sequence:0000}-2026/YL/TU", updated.GetProperty("reference").GetString());
+    }
+
+    [Fact]
+    public async Task Changing_the_issue_date_rewrites_the_year_of_the_reference()
+    {
+        var seed = await SeedAsync();
+        using var client = _factory.CreateAuthenticatedClient(seed.User.Id);
+        var created = await CreateAndReadAsync(client, BuildPayload(seed, "ignored"));
+        var id = created.GetProperty("id").GetGuid();
+        ReferenceRules.TryParse(created.GetProperty("reference").GetString(), out _, out var sequence, out _);
+
+        var payload = BuildPayload(seed, "Loc/1/YL/ZZ");
+        payload["issueDate"] = "2027-01-15";
+        var response = await client.PutAsJsonAsync($"/api/offers/{id}", payload);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await ReadJsonAsync(response);
+        Assert.Equal($"Loc/{sequence:0000}-2027/YL/TU", updated.GetProperty("reference").GetString());
     }
 
     [Fact]

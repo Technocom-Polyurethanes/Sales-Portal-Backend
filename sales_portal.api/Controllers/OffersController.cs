@@ -43,6 +43,7 @@ public class OffersController : ControllerBase
     [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferNextSequenceDto>> GetNextSequence(
         [FromQuery] OfferType? offerType,
+        [FromQuery] DateOnly? issueDate,
         CancellationToken cancellationToken)
     {
         if (offerType == null)
@@ -50,7 +51,11 @@ public class OffersController : ControllerBase
             throw new ValidationException("Offer type is required.");
         }
 
-        return Ok(await _offerService.GetNextSequenceAsync(offerType.Value, CurrentUserId(), cancellationToken));
+        return Ok(await _offerService.GetNextSequenceAsync(
+            offerType.Value,
+            CurrentUserId(),
+            cancellationToken,
+            issueDate));
     }
 
     [HttpGet("{id:guid}/versions")]
@@ -141,6 +146,17 @@ public class OffersController : ControllerBase
         }
 
         return Ok(await _offerService.UpdateStatusAsync(id, request, userId.Value, cancellationToken));
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = Policies.OffersDelete)]
+    public async Task<IActionResult> DeleteOffer(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        return await _offerService.DeleteAsync(id, cancellationToken)
+            ? NoContent()
+            : NotFound();
     }
 
     private Guid? CurrentUserId()

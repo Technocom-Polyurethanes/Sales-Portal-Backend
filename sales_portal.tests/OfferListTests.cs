@@ -173,6 +173,23 @@ public class OfferListTests
     }
 
     [Fact]
+    public async Task ReviseAsync_copies_the_attention_name()
+    {
+        using var db = new TestDatabase();
+        var basics = TestFactory.SeedBasics(db.Context);
+        var v1 = TestFactory.AddOffer(db.Context, basics, "Loc/100/YL/AA", version: 1);
+        v1.Attention = "Nader William";
+        v1.AttentionAr = "نادر وليام";
+        await db.Context.SaveChangesAsync();
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var revised = await service.ReviseAsync(v1.Id, basics.User.Id, CancellationToken.None);
+
+        Assert.Equal("Nader William", revised.Attention);
+        Assert.Equal("نادر وليام", revised.AttentionAr);
+    }
+
+    [Fact]
     public async Task ReviseAsync_by_another_user_keeps_the_creator_and_only_changes_the_editor()
     {
         using var db = new TestDatabase();

@@ -103,6 +103,23 @@ public class BankAccountService : IBankAccountService
         return await GetByIdAsync(id, cancellationToken);
     }
 
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var account = await _bankAccounts.GetAll()
+            .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (account == null)
+        {
+            return false;
+        }
+
+        _bankAccounts.Remove(account);
+        await _bankAccounts.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Catalog);
+        return true;
+    }
+
     private Task<IReadOnlyList<BankAccountDto>> LoadListAsync()
     {
         return _cache.GetOrCreateAsync<IReadOnlyList<BankAccountDto>>(

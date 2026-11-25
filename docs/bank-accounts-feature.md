@@ -22,8 +22,9 @@ Rules:
 ## 2. Select banks per offer
 
 - Draft payload and offer detail get `bankAccountIds: Guid[] | null`.
-- Create/update/revise/calculate honour it. `null` or omitted = all active accounts at save time (backward compatible), and
-  the resolved list is stored. An empty array -> 400 "Select at least one bank account." An unknown or inactive id -> 400.
+- Create/calculate honour it. `null` or omitted = the first two active accounts by `sortOrder`; update/revise/issue keep
+  the all-active selection of legacy offers with no stored ids. The resolved list is stored. An empty array -> 400
+  "Select at least one bank account." An unknown or inactive id -> 400.
 - Storage: nullable `uuid[]` column `bank_account_ids` on `offers`, NO foreign key, so deleting an account in Settings never
   fails because an offer used it. Offers created before this feature stay `null` (= all banks, as their snapshot already shows).
 - The printed document / snapshot lists only the selected accounts, ordered by `sortOrder`. Filter the cached
@@ -35,7 +36,7 @@ Rules:
 
 - Import page: new source "Bank accounts" (columns, labels, EN + AR strings, mock import support).
 - Offer builder: a "Bank accounts" card in the last step with one checkbox per active account (bank, branch, account number,
-  currency), select all / none, at least one required. Default = all active accounts. The live preview shows only the selected ones.
+  currency), select all / none, at least one required. Default = the first two active accounts by `sortOrder`. The live preview shows only the selected ones.
 - Offer details/print uses the offer's own selection (`null` = all). New version / duplicate keeps the selection.
 
 ## Done when

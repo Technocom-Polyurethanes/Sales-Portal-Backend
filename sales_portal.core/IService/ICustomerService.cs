@@ -11,4 +11,5 @@ public interface ICustomerService
     Task<CustomerDetailDto?> GetByIdWithHistoryAsync(Guid id, CancellationToken cancellationToken);
     Task<CustomerDetailDto> CreateAsync(UpsertCustomerDto dto, CancellationToken cancellationToken);
     Task<CustomerDetailDto?> UpdateAsync(Guid id, UpsertCustomerDto dto, CancellationToken cancellationToken);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
 }
