@@ -186,7 +186,10 @@ public class LiveUpdateTests
         using var db = new TestDatabase();
         var hub = new ChangeBroadcaster();
         using var subscription = hub.Subscribe();
-        var service = new UserService(new Repository<User>(db.Context), hub);
+        var service = new UserService(
+            new Repository<User>(db.Context),
+            new Repository<Offer>(db.Context),
+            changes: hub);
 
         await service.CreateAsync(
             new CreateUserDto
@@ -210,7 +213,10 @@ public class LiveUpdateTests
         using var db = new TestDatabase();
         var hub = new ChangeBroadcaster();
         using var subscription = hub.Subscribe();
-        var service = new UserService(new Repository<User>(db.Context), hub);
+        var service = new UserService(
+            new Repository<User>(db.Context),
+            new Repository<Offer>(db.Context),
+            changes: hub);
 
         await Assert.ThrowsAnyAsync<Exception>(() => service.CreateAsync(
             new CreateUserDto { Username = "x" },

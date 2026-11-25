@@ -52,7 +52,7 @@ public class OfferService : IOfferService
     {
         draft.CreatedByUserId ??= currentUserId;
 
-        var catalog = await LoadCatalogAsync(draft, cancellationToken);
+        var catalog = await LoadCatalogAsync(draft, cancellationToken, useDefaultBanks: true);
         return _calculator.Calculate(draft, catalog);
     }
 
@@ -280,16 +280,16 @@ public class OfferService : IOfferService
     public async Task<OfferNextSequenceDto> GetNextSequenceAsync(
         OfferType offerType,
         Guid? currentUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateOnly? issueDate = null)
     {
-        var maxSeq = await _offers.GetAll()
-            .AsNoTracking()
+        var allOffers = _offers.GetAll().AsNoTracking();
+        var maxSeq = await allOffers
             .MaxAsync(o => (int?)o.SerialNumber, cancellationToken) ?? 0;
 
         // Older rows may not have a stored serial number, so also read it from their
         // reference. New references carry it as the second segment, legacy ones as the first.
-        var references = await _offers.GetAll()
-            .AsNoTracking()
+        var references = await allOffers
             .Select(o => o.Reference)
             .ToListAsync(cancellationToken);
 
@@ -311,7 +311,11 @@ public class OfferService : IOfferService
         return new OfferNextSequenceDto
         {
             SuggestedSequence = suggestedSequence,
-            SuggestedReference = ReferenceRules.Build(offerType, suggestedSequence, initials),
+            SuggestedReference = ReferenceRules.Build(
+                offerType,
+                suggestedSequence,
+                initials,
+                issueDate?.Year ?? DateTime.UtcNow.Year),
             IsFirstOffer = references.Count == 0
         };
     }
@@ -373,9 +377,9 @@ public class OfferService : IOfferService
         }
 
         draft.SerialNumber = sequence;
-        draft.Reference = ReferenceRules.Build(draft.OfferType.Value, sequence, initials);
+        draft.Reference = ReferenceRules.Build(draft.OfferType.Value, sequence, initials, draft.IssueDate.Year);
 
-        var catalog = await LoadCatalogAsync(draft, cancellationToken);
+        var catalog = await LoadCatalogAsync(draft, cancellationToken, useDefaultBanks: true);
         var calculation = _calculator.Calculate(draft, catalog);
         ThrowIfInvalid(calculation);
 
@@ -430,7 +434,7 @@ public class OfferService : IOfferService
 
         // The reference is never taken from the client: the offer keeps its number and
         // initials and only the type segment follows the selected offer type.
-        draft.Reference = ReferenceRules.WithType(DisplayReference(offer), draft.OfferType.Value);
+        draft.Reference = ReferenceRules.WithTypeAndYear(DisplayReference(offer), draft.OfferType.Value, draft.IssueDate.Year);
 
         if (ReferenceRules.TryGetSequence(draft.Reference, out var sequence))
         {
@@ -600,6 +604,30 @@ public class OfferService : IOfferService
             ?? throw new NotFoundException("Offer was not found after status update.");
     }
 
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var rootId = await _offers.GetAll()
+            .Where(o => o.Id == id)
+            .Select(o => (Guid?)o.RootOfferId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (rootId == null)
+        {
+            return false;
+        }
+
+        // One delete removes the whole chain, whichever version was selected in the UI.
+        var versions = await _offers.GetAll()
+            .Where(o => o.RootOfferId == rootId.Value)
+            .ToListAsync(cancellationToken);
+        _offers.RemoveRange(versions);
+
+        await _offers.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Offers);
+        return true;
+    }
+
     // Drafts may be saved incomplete, so "at least one line" is enforced only when issuing.
     private async Task ValidateForIssueAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -646,7 +674,8 @@ public class OfferService : IOfferService
 
     private async Task<OfferCatalog> LoadCatalogAsync(
         OfferDraftDto draft,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useDefaultBanks = false)
     {
         var catalog = await _catalogService.GetOfferCatalogAsync(
             draft.CustomerId,
@@ -657,10 +686,15 @@ public class OfferService : IOfferService
 
         // Bank accounts come from the active, sort-ordered catalog. A selection is resolved
         // once here so the calculation, snapshot and printed document all see the same list.
+        // New drafts use the first two accounts; legacy offers keep their all-active selection.
         var availableBanks = catalog.BankAccounts;
         if (draft.BankAccountIds is null)
         {
-            draft.BankAccountIds = availableBanks.Select(account => account.Id).ToArray();
+            var defaults = useDefaultBanks
+                ? availableBanks.Take(2).ToList()
+                : availableBanks;
+            catalog.BankAccounts = defaults;
+            draft.BankAccountIds = defaults.Select(account => account.Id).ToArray();
         }
         else
         {
@@ -785,7 +819,8 @@ public class OfferService : IOfferService
                 ReferenceRules.TryGetSequence(offer.Reference, out var sequence)
                     ? sequence
                     : offer.SerialNumber,
-                ReferenceRules.InitialsFrom(offer.CreatedBy?.Initials, offer.CreatedBy?.FullName));
+                ReferenceRules.InitialsFrom(offer.CreatedBy?.Initials, offer.CreatedBy?.FullName),
+                offer.IssueDate.Year);
 
     private static OfferDraftDto MapToDraft(Offer offer)
     {

@@ -4,35 +4,46 @@ using sales_portal.domain.Enums;
 namespace sales_portal.core.Calculations;
 
 /// <summary>
-/// Format rules for offer references such as <c>Loc/42/YL/JD</c>.
-/// The first segment is the offer type, the second the sequence, <c>YL</c> is the
-/// static company identifier and the last segment is the creator's initials.
+/// Format rules for offer references such as <c>Loc/0042-2026/YL/JD</c>.
+/// The first segment is the offer type, the second the zero-padded sequence and the year of
+/// the issue date, <c>YL</c> is the static company identifier and the last segment is the
+/// creator's initials. References without a year remain valid for backwards compatibility.
 /// </summary>
 public static class ReferenceRules
 {
     public const string Pattern =
-        @"^(?<type>Loc|Int)/(?<sequence>\d+)/YL/(?<initials>[A-Za-z0-9]+)$";
+        @"^(?<type>Loc|Int)/(?<sequence>\d+)(?:-(?<year>\d{4}))?/YL/(?<initials>[A-Za-z0-9]+)$";
 
-    public const string ExpectedFormat = "Loc/42/YL/JD";
+    public const string ExpectedFormat = "Loc/0000-2026/YL/JD";
 
     private static readonly Regex ReferenceRegex = new(
         Pattern,
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    /// <summary>Builds a reference from its parts.</summary>
-    public static string Build(OfferType type, int sequence, string initials)
-        => $"{type}/{sequence}/YL/{initials.Trim().ToUpperInvariant()}";
+    /// <summary>Builds a reference from its parts. The year comes from the offer's issue date.</summary>
+    public static string Build(OfferType type, int sequence, string initials, int year)
+        => $"{type}/{sequence:0000}-{year:0000}/YL/{initials.Trim().ToUpperInvariant()}";
 
-    /// <summary>True when the reference follows the type/sequence/YL/initials format.</summary>
+    /// <summary>True when the reference follows the type/serial-year/YL/initials format.</summary>
     public static bool IsValid(string? reference)
         => !string.IsNullOrWhiteSpace(reference) && ReferenceRegex.IsMatch(reference.Trim());
 
-    /// <summary>Splits a new-format reference into its type, sequence and initials.</summary>
+    /// <summary>Splits a reference into its type, sequence and initials.</summary>
     public static bool TryParse(string? reference, out OfferType type, out int sequence, out string initials)
+        => TryParse(reference, out type, out sequence, out initials, out _);
+
+    /// <summary>Splits a reference into its type, sequence, initials and issue year (0 on legacy references).</summary>
+    public static bool TryParse(
+        string? reference,
+        out OfferType type,
+        out int sequence,
+        out string initials,
+        out int year)
     {
         type = OfferType.Loc;
         sequence = 0;
         initials = string.Empty;
+        year = 0;
 
         if (string.IsNullOrWhiteSpace(reference))
         {
@@ -49,16 +60,20 @@ public static class ReferenceRules
             ? OfferType.Int
             : OfferType.Loc;
         initials = match.Groups["initials"].Value.ToUpperInvariant();
+        if (match.Groups["year"].Success)
+        {
+            int.TryParse(match.Groups["year"].Value, out year);
+        }
         return true;
     }
 
     /// <summary>
-    /// Rewrites the type segment of a new-format reference and keeps its sequence and initials,
-    /// so changing the offer type never changes the number.
+    /// Rewrites the type and year of a reference and keeps its serial and initials, so changing
+    /// the offer type or the issue date never changes the number.
     /// </summary>
-    public static string WithType(string reference, OfferType type)
-        => TryParse(reference, out _, out var sequence, out var initials)
-            ? Build(type, sequence, initials)
+    public static string WithTypeAndYear(string reference, OfferType type, int year)
+        => TryParse(reference, out _, out var sequence, out var initials, out _)
+            ? Build(type, sequence, initials, year)
             : reference;
 
     /// <summary>

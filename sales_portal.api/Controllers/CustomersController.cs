@@ -84,4 +84,15 @@ public class CustomersController : ControllerBase
         var customer = await _customerService.UpdateAsync(id, request, cancellationToken);
         return customer == null ? NotFound() : Ok(customer);
     }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = Policies.CatalogDelete)]
+    public async Task<IActionResult> DeleteCustomer(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        return await _customerService.DeleteAsync(id, cancellationToken)
+            ? NoContent()
+            : NotFound();
+    }
 }

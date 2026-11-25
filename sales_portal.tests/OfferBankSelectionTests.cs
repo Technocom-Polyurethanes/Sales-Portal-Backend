@@ -10,7 +10,7 @@ namespace SalesPortal.Tests;
 public class OfferBankSelectionTests
 {
     [Fact]
-    public async Task Null_selection_stores_all_active_accounts_and_the_document_lists_them_in_sort_order()
+    public async Task Null_selection_stores_the_first_two_active_accounts_in_sort_order()
     {
         using var db = new TestDatabase();
         var setup = Seed(db);
@@ -80,6 +80,25 @@ public class OfferBankSelectionTests
     }
 
     [Fact]
+    public async Task Legacy_offer_keeps_all_active_accounts_when_revised()
+    {
+        using var db = new TestDatabase();
+        var setup = Seed(db);
+        var offer = TestFactory.AddOffer(
+            db.Context,
+            setup.Basics,
+            "Loc/101/YL/AA",
+            issueDate: new DateOnly(2026, 10, 21));
+
+        var service = TestFactory.CreateOfferService(db.Context);
+        var revised = await service.ReviseAsync(offer.Id, setup.Basics.User.Id, CancellationToken.None);
+
+        Assert.Equal(
+            new[] { setup.BankB.Id, setup.BankA.Id, setup.BankC.Id },
+            revised.BankAccountIds);
+    }
+
+    [Fact]
     public async Task Legacy_offer_without_a_selection_returns_null()
     {
         using var db = new TestDatabase();
@@ -144,13 +163,14 @@ public class OfferBankSelectionTests
         var drum = new PackageType { Name = "Drum", NameAr = "برميل" };
         var bankA = Bank("Bank A", sortOrder: 2);
         var bankB = Bank("Bank B", sortOrder: 1);
+        var bankC = Bank("Bank C", sortOrder: 3);
         var inactive = Bank("Bank Inactive", sortOrder: 0);
         inactive.IsActive = false;
 
-        db.Context.AddRange(material, drum, bankA, bankB, inactive);
+        db.Context.AddRange(material, drum, bankA, bankB, bankC, inactive);
         db.Context.SaveChanges();
 
-        return new Setup(basics, material, drum, bankA, bankB, inactive);
+        return new Setup(basics, material, drum, bankA, bankB, bankC, inactive);
     }
 
     private static BankAccount Bank(string name, int sortOrder) => new()
@@ -172,5 +192,6 @@ public class OfferBankSelectionTests
         PackageType Drum,
         BankAccount BankA,
         BankAccount BankB,
+        BankAccount BankC,
         BankAccount Inactive);
 }

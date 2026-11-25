@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.Services;
@@ -10,7 +11,9 @@ namespace SalesPortal.Tests;
 
 public class UserServiceTests
 {
-    private static UserService CreateService(TestDatabase db) => new(new Repository<User>(db.Context));
+    private static UserService CreateService(TestDatabase db) => new(
+        new Repository<User>(db.Context),
+        new Repository<Offer>(db.Context));
 
     private static CreateUserDto NewUser(string username = "jdoe", UserRole? role = UserRole.Sales) => new()
     {
@@ -159,6 +162,39 @@ public class UserServiceTests
             target.Id, UpdateFor(target, UserRole.Accountant), actor.Id, CancellationToken.None);
 
         Assert.Equal(UserRole.Accountant, updated.Role);
+    }
+
+    [Fact]
+    public async Task Delete_cannot_remove_yourself_or_the_last_active_admin()
+    {
+        using var db = new TestDatabase();
+        var service = CreateService(db);
+        var me = AddUser(db, "me", UserRole.Admin);
+        var other = AddUser(db, "other", UserRole.Admin);
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => service.DeleteAsync(me.Id, me.Id, CancellationToken.None));
+
+        other.IsActive = false;
+        db.Context.SaveChanges();
+        await Assert.ThrowsAsync<ConflictException>(
+            () => service.DeleteAsync(me.Id, other.Id, CancellationToken.None));
+
+        Assert.Equal(2, db.Context.Users.Count());
+    }
+
+    [Fact]
+    public async Task Delete_removes_the_user_row()
+    {
+        using var db = new TestDatabase();
+        var service = CreateService(db);
+        var actor = AddUser(db, "actor", UserRole.Admin);
+        var target = AddUser(db, "target", UserRole.Sales);
+
+        Assert.True(await service.DeleteAsync(target.Id, actor.Id, CancellationToken.None));
+
+        Assert.Equal(actor.Id, db.Context.Users.Single().Id);
+        Assert.DoesNotContain(db.Context.Users, u => u.Id == target.Id);
     }
 
     [Fact]

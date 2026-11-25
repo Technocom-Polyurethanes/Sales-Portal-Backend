@@ -10,9 +10,10 @@ public interface IOfferService
     Task<OfferDetailDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<OfferDocumentDto?> GetDocumentAsync(Guid id, CancellationToken cancellationToken);
     Task<List<OfferListItemDto>> GetVersionsAsync(Guid id, CancellationToken cancellationToken);
-    Task<OfferNextSequenceDto> GetNextSequenceAsync(OfferType offerType, Guid? currentUserId, CancellationToken cancellationToken);
+    Task<OfferNextSequenceDto> GetNextSequenceAsync(OfferType offerType, Guid? currentUserId, CancellationToken cancellationToken, DateOnly? issueDate = null);
     Task<OfferDetailDto> CreateAsync(OfferDraftDto draft, Guid currentUserId, CancellationToken cancellationToken);
     Task<OfferDetailDto> UpdateAsync(Guid id, OfferDraftDto draft, Guid currentUserId, CancellationToken cancellationToken);
     Task<OfferDetailDto> ReviseAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken);
     Task<OfferDetailDto> UpdateStatusAsync(Guid id, UpdateOfferStatusDto dto, Guid currentUserId, CancellationToken cancellationToken);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
 }

@@ -14,4 +14,5 @@ public interface IBankAccountService
     Task<BankAccountDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<BankAccountDto> CreateAsync(UpsertBankAccountDto dto, CancellationToken cancellationToken);
     Task<BankAccountDto?> UpdateAsync(Guid id, UpsertBankAccountDto dto, CancellationToken cancellationToken);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
 }

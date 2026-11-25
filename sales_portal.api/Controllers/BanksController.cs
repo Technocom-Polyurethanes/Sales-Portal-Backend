@@ -65,4 +65,15 @@ public class BanksController : ControllerBase
         var account = await _bankAccountService.UpdateAsync(id, request, cancellationToken);
         return account == null ? NotFound() : Ok(account);
     }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = Policies.CatalogDelete)]
+    public async Task<IActionResult> DeleteBank(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        return await _bankAccountService.DeleteAsync(id, cancellationToken)
+            ? NoContent()
+            : NotFound();
+    }
 }

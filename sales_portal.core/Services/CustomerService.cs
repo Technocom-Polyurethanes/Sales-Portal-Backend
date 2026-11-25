@@ -17,11 +17,16 @@ public class CustomerService : ICustomerService
     private static readonly string[] DirectoryRegions = [CacheRegions.Customers, CacheRegions.Offers];
 
     private readonly IRepository<Customer> _customers;
+    private readonly IRepository<Offer> _offers;
     private readonly IReferenceDataCache _cache;
 
-    public CustomerService(IRepository<Customer> customers, IReferenceDataCache? cache = null)
+    public CustomerService(
+        IRepository<Customer> customers,
+        IRepository<Offer> offers,
+        IReferenceDataCache? cache = null)
     {
         _customers = customers;
+        _offers = offers;
         _cache = cache ?? NoReferenceDataCache.Instance;
     }
 
@@ -341,6 +346,34 @@ public class CustomerService : ICustomerService
         _cache.Invalidate(CacheRegions.Customers);
 
         return MapDetail(customer);
+    }
+
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var customer = await _customers.GetAll()
+            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        if (customer == null)
+        {
+            return false;
+        }
+
+        // Offers reference customers, so a physical delete has to remove their chains first.
+        var roots = await _offers.GetAll()
+            .Where(o => o.CustomerId == id)
+            .Select(o => o.RootOfferId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var offers = await _offers.GetAll()
+            .Where(o => roots.Contains(o.RootOfferId))
+            .ToListAsync(cancellationToken);
+        _offers.RemoveRange(offers);
+
+        _customers.Remove(customer);
+        await _customers.SaveChangesAsync(cancellationToken);
+        _cache.Invalidate(CacheRegions.Customers, CacheRegions.Offers);
+        return true;
     }
 
     private IQueryable<Customer> BuildSearchQuery(string? search)
