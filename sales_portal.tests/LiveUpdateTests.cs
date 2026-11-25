@@ -32,6 +32,27 @@ public class LiveUpdateTests
     }
 
     [Fact]
+    public void Tables_map_to_regions_and_the_complete_topic_set()
+    {
+        Assert.True(ChangeTopics.TryResolveTable("users", out var userRegions, out var userTopics));
+        Assert.Equal(new[] { CacheRegions.Offers }, userRegions);
+        Assert.Equal(new[] { "offers", "users" }, Sorted(userTopics));
+
+        Assert.True(ChangeTopics.TryResolveTable("bank_accounts", out _, out var bankTopics));
+        Assert.Equal(new[] { "banks", "catalog" }, Sorted(bankTopics));
+
+        Assert.True(ChangeTopics.TryResolveTable("offer_lines", out var offerRegions, out var offerTopics));
+        Assert.Equal(new[] { CacheRegions.Offers }, offerRegions);
+        Assert.Equal(new[] { "offers" }, Sorted(offerTopics));
+
+        Assert.False(ChangeTopics.TryResolveTable("unknown_table", out var unknownRegions, out var unknownTopics));
+        Assert.Empty(unknownRegions);
+        Assert.Empty(unknownTopics);
+
+        Assert.Equal(14, ChangeTopics.MappedTables.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
     public async Task A_subscriber_receives_what_was_published()
     {
         var hub = new ChangeBroadcaster();
