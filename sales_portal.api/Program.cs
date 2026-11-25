@@ -11,6 +11,7 @@ using sales_portal.api.Middleware;
 using sales_portal.core.Caching;
 using sales_portal.core.Configuration;
 using sales_portal.core.IService;
+using sales_portal.core.Live;
 using sales_portal.core.Services;
 using sales_portal.domain.Interfaces;
 using sales_portal.infrastructure;
@@ -76,6 +77,10 @@ builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
 // Reference data (customers, materials, catalog) is read on every offer and rarely written.
 builder.Services.AddMemoryCache();
+
+// Tells connected browsers that data changed (see EventsController). The cache announces what it
+// invalidates, so it needs the broadcaster.
+builder.Services.AddSingleton<IChangeBroadcaster, ChangeBroadcaster>();
 builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();

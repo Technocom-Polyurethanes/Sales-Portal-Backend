@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
+using sales_portal.core.Live;
 
 namespace sales_portal.core.Caching;
 
@@ -11,11 +12,13 @@ public sealed class ReferenceDataCache : IReferenceDataCache
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
     private readonly IMemoryCache _cache;
+    private readonly IChangeBroadcaster _changes;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _regions = new();
 
-    public ReferenceDataCache(IMemoryCache cache)
+    public ReferenceDataCache(IMemoryCache cache, IChangeBroadcaster? changes = null)
     {
         _cache = cache;
+        _changes = changes ?? NoChangeBroadcaster.Instance;
     }
 
     public async Task<T> GetOrCreateAsync<T>(
@@ -58,6 +61,11 @@ public sealed class ReferenceDataCache : IReferenceDataCache
                 source.Cancel();
             }
         }
+
+        // Every write invalidates the regions it touched once it is saved, so this is also the
+        // moment to tell connected browsers. The entries above are already gone, which means a
+        // browser that reloads straight away reads the new data and not a cached copy of the old.
+        _changes.Publish(ChangeTopics.ForRegions(regions));
     }
 
     private CancellationTokenSource RegionSource(string region)

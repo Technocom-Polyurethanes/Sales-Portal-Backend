@@ -5,6 +5,7 @@ using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.core.Live;
 using sales_portal.core.Services.Import;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
@@ -23,6 +24,7 @@ public class ImportService : IImportService
     private readonly IRepository<User> _users;
     private readonly IRepository<BankAccount> _bankAccounts;
     private readonly IReferenceDataCache _cache;
+    private readonly IChangeBroadcaster _changes;
 
     public ImportService(
         IRepository<ImportBatch> batches,
@@ -31,7 +33,8 @@ public class ImportService : IImportService
         IRepository<PaymentTerm> paymentTerms,
         IRepository<User> users,
         IRepository<BankAccount> bankAccounts,
-        IReferenceDataCache? cache = null)
+        IReferenceDataCache? cache = null,
+        IChangeBroadcaster? changes = null)
     {
         _batches = batches;
         _customers = customers;
@@ -40,6 +43,7 @@ public class ImportService : IImportService
         _users = users;
         _bankAccounts = bankAccounts;
         _cache = cache ?? NoReferenceDataCache.Instance;
+        _changes = changes ?? NoChangeBroadcaster.Instance;
     }
 
     public Task<ImportTemplateDto> GetTemplateAsync(
@@ -222,6 +226,7 @@ public class ImportService : IImportService
 
         // A commit can change customers, materials, prices and bank accounts, so every list built from them is stale.
         _cache.Invalidate(CacheRegions.Customers, CacheRegions.Materials, CacheRegions.Catalog);
+        _changes.Publish([ChangeTopics.Imports]);
 
         return ResultOf(batch);
     }

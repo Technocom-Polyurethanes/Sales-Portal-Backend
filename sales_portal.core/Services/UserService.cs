@@ -5,6 +5,7 @@ using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.core.Live;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
@@ -32,15 +33,18 @@ public class UserService : IUserService
     private readonly IRepository<User> _users;
     private readonly IRepository<Offer> _offers;
     private readonly IReferenceDataCache _cache;
+    private readonly IChangeBroadcaster _changes;
 
     public UserService(
         IRepository<User> users,
         IRepository<Offer> offers,
-        IReferenceDataCache? cache = null)
+        IReferenceDataCache? cache = null,
+        IChangeBroadcaster? changes = null)
     {
         _users = users;
         _offers = offers;
         _cache = cache ?? NoReferenceDataCache.Instance;
+        _changes = changes ?? NoChangeBroadcaster.Instance;
     }
 
     public async Task<PaginatedResultDto<UserDto>> GetPagedAsync(
@@ -145,6 +149,7 @@ public class UserService : IUserService
 
         await _users.AddAsync(user);
         await _users.SaveChangesAsync(cancellationToken);
+        _changes.Publish([ChangeTopics.Users]);
         return Map(user);
     }
 
@@ -193,6 +198,7 @@ public class UserService : IUserService
         user.IsActive = newIsActive;
 
         await _users.SaveChangesAsync(cancellationToken);
+        _changes.Publish([ChangeTopics.Users]);
         return Map(user);
     }
 
@@ -209,6 +215,7 @@ public class UserService : IUserService
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
         await _users.SaveChangesAsync(cancellationToken);
+        _changes.Publish([ChangeTopics.Users]);
     }
 
     public async Task<bool> DeleteAsync(
@@ -254,6 +261,7 @@ public class UserService : IUserService
         _users.Remove(user);
         await _users.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Offers);
+        _changes.Publish([ChangeTopics.Users]);
         return true;
     }
 

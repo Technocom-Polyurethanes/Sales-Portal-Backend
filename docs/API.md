@@ -808,6 +808,55 @@ demote yourself, or would leave the system without an active administrator.
 Body: `{ "newPassword": "..." }`. Returns `204`. Users change their own password with
 `POST /api/auth/change-password`.
 
+## Live updates
+
+### `GET /api/events` (any signed-in user)
+
+A Server-Sent Events stream (`text/event-stream`) that tells a browser when data changed, so
+screens can load it again without a manual refresh. It carries **topic names only, never
+data**: what a user may see still goes through the normal, authorized endpoints.
+
+Send the usual `Authorization: Bearer <token>` header. The browser `EventSource` cannot set
+headers, so use `fetch` and read the response body as a stream.
+
+```
+retry: 5000
+event: ready
+data: {}
+
+event: change
+data: {"topics":["offers","customers"]}
+
+: ping
+```
+
+| Event | Meaning |
+| --- | --- |
+| `ready` | The stream is open and subscribed. Sent once, first. |
+| `change` | Something changed. `topics` lists what, see below. Changes that happen close together arrive as one event. |
+| `: ping` | A comment line every 20 seconds while idle, to keep proxies from closing the connection. |
+
+| Topic | Announced after a write to |
+| --- | --- |
+| `customers` | customers |
+| `materials` | materials and prices |
+| `catalog` | payment terms, package types, bank accounts, company and workspace settings |
+| `banks` | bank accounts (always together with `catalog`) |
+| `offers` | offers, their lines, packaging and delivery batches |
+| `users` | users |
+| `imports` | a committed import |
+
+An event is sent only after the write is saved (and its transaction committed), and after the
+server's own reference-data cache has been cleared, so reloading straight away returns the new
+data.
+
+The server ends the stream after at most 30 minutes, or when the token expires, so a
+deactivated user cannot stay connected. A client reconnects (`retry` is 5 seconds) and should
+reload what it shows, because changes made while it was disconnected are not replayed.
+
+Events reach the browsers connected to the same server process. Changes made directly in the
+database, outside the API, are not announced.
+
 ## Additive contract summary
 
 - Offer list: new `latestOnly`, `sortBy`, `sortDir` query parameters; new
@@ -847,6 +896,8 @@ Body: `{ "newPassword": "..." }`. Returns `204`. Users change their own password
   customer or material.
 - Offers already return `createdByName` and `createdAt` (list and detail), which the
   frontend now displays.
+
+- New `GET /api/events` live-update stream (see Live updates). Nothing else changes.
 
 Nothing else was removed or renamed. The only breaking change is the offer reference
 format and the required `offerType`; the next-sequence `year`/`month` parameters are
