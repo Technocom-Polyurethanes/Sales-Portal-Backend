@@ -350,8 +350,10 @@ the offer detail accept `bankAccountIds`:
 }
 ```
 
-- `null` or omitted selects every active account at save time. The resolved list is
-  stored, so a later Settings change does not silently change this offer.
+- `null` or omitted on create/calculate selects the first two active accounts by
+  `sortOrder`. Updating, revising or issuing an older offer with a missing selection
+  keeps every active account. The resolved list is stored, so a later Settings change
+  does not silently change this offer.
 - `[]` returns `400` ("Select at least one bank account.").
 - An unknown or inactive id returns `400` ("Bank account … was not found or is
   inactive.").

@@ -52,7 +52,7 @@ public class OfferService : IOfferService
     {
         draft.CreatedByUserId ??= currentUserId;
 
-        var catalog = await LoadCatalogAsync(draft, cancellationToken);
+        var catalog = await LoadCatalogAsync(draft, cancellationToken, useDefaultBanks: true);
         return _calculator.Calculate(draft, catalog);
     }
 
@@ -379,7 +379,7 @@ public class OfferService : IOfferService
         draft.SerialNumber = sequence;
         draft.Reference = ReferenceRules.Build(draft.OfferType.Value, sequence, initials, draft.IssueDate.Year);
 
-        var catalog = await LoadCatalogAsync(draft, cancellationToken);
+        var catalog = await LoadCatalogAsync(draft, cancellationToken, useDefaultBanks: true);
         var calculation = _calculator.Calculate(draft, catalog);
         ThrowIfInvalid(calculation);
 
@@ -674,7 +674,8 @@ public class OfferService : IOfferService
 
     private async Task<OfferCatalog> LoadCatalogAsync(
         OfferDraftDto draft,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useDefaultBanks = false)
     {
         var catalog = await _catalogService.GetOfferCatalogAsync(
             draft.CustomerId,
@@ -685,10 +686,15 @@ public class OfferService : IOfferService
 
         // Bank accounts come from the active, sort-ordered catalog. A selection is resolved
         // once here so the calculation, snapshot and printed document all see the same list.
+        // New drafts use the first two accounts; legacy offers keep their all-active selection.
         var availableBanks = catalog.BankAccounts;
         if (draft.BankAccountIds is null)
         {
-            draft.BankAccountIds = availableBanks.Select(account => account.Id).ToArray();
+            var defaults = useDefaultBanks
+                ? availableBanks.Take(2).ToList()
+                : availableBanks;
+            catalog.BankAccounts = defaults;
+            draft.BankAccountIds = defaults.Select(account => account.Id).ToArray();
         }
         else
         {
