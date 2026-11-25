@@ -24,6 +24,68 @@ public static class ChangeTopics
     /// <summary>The log of committed imports.</summary>
     public const string Imports = "imports";
 
+    /// <summary>The tables whose direct database writes are announced to browsers.</summary>
+    public static IReadOnlyCollection<string> MappedTables { get; } =
+    [
+        "users",
+        "customers",
+        "package_types",
+        "materials",
+        "bank_accounts",
+        "payment_terms",
+        "company_settings",
+        "workspace_settings",
+        "offers",
+        "offer_lines",
+        "offer_line_packagings",
+        "offer_delivery_batches",
+        "offer_delivery_allocations",
+        "import_batches"
+    ];
+
+    private static readonly IReadOnlyDictionary<string, (string[] Regions, string[] Topics)> TableMap =
+        new Dictionary<string, (string[] Regions, string[] Topics)>(StringComparer.Ordinal)
+        {
+            ["users"] = Map([CacheRegions.Offers], Users),
+            ["customers"] = Map([CacheRegions.Customers, CacheRegions.Offers]),
+            ["materials"] = Map([CacheRegions.Materials, CacheRegions.Catalog, CacheRegions.Offers]),
+            ["bank_accounts"] = Map([CacheRegions.Catalog]),
+            ["package_types"] = Map([CacheRegions.Catalog]),
+            ["payment_terms"] = Map([CacheRegions.Catalog]),
+            ["company_settings"] = Map([CacheRegions.Catalog]),
+            ["workspace_settings"] = Map([CacheRegions.Catalog]),
+            ["offers"] = Map([CacheRegions.Offers]),
+            ["offer_lines"] = Map([CacheRegions.Offers]),
+            ["offer_line_packagings"] = Map([CacheRegions.Offers]),
+            ["offer_delivery_batches"] = Map([CacheRegions.Offers]),
+            ["offer_delivery_allocations"] = Map([CacheRegions.Offers]),
+            ["import_batches"] = Map([], Imports)
+        };
+
+    /// <summary>
+    /// Resolves the regions and the complete topic set for a table. Unknown tables resolve to
+    /// nothing, so a notification from an unrelated table is ignored.
+    /// </summary>
+    public static bool TryResolveTable(
+        string table,
+        out IReadOnlyCollection<string> regions,
+        out IReadOnlyCollection<string> topics)
+    {
+        if (table is not null && TableMap.TryGetValue(table, out var mapping))
+        {
+            regions = mapping.Regions;
+            topics = mapping.Topics;
+            return true;
+        }
+
+        regions = Array.Empty<string>();
+        topics = Array.Empty<string>();
+        return false;
+    }
+
+    private static (string[] Regions, string[] Topics) Map(string[] regions, params string[] extras) =>
+        (regions, ForRegions(regions).Union(extras, StringComparer.Ordinal).ToArray());
+
     /// <summary>
     /// The topics behind cache regions. Every write already invalidates the regions it touched
     /// after it was saved (and committed), so announcing from there means a browser is only told

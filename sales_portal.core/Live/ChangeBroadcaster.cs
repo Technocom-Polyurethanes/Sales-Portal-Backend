@@ -7,9 +7,8 @@ namespace sales_portal.core.Live;
 /// looked, so memory per connection is bounded by the number of topics no matter how slow the
 /// connection is, and a publisher never waits for a subscriber.
 ///
-/// This reaches the browsers connected to this server process. The application runs as one
-/// process; running several would need a shared channel (for example Postgres LISTEN/NOTIFY)
-/// behind <see cref="IChangeBroadcaster"/>.
+/// Postgres LISTEN/NOTIFY fans changes out to browsers on every API instance behind
+/// <see cref="IChangeBroadcaster"/>.
 /// </summary>
 public sealed class ChangeBroadcaster : IChangeBroadcaster
 {

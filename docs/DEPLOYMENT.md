@@ -36,6 +36,7 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 | Variable | Description |
 |----------|-------------|
 | `DB_CONNECTION_STRING` (or `ConnectionStrings__Default`) | PostgreSQL connection string. **Confirm your hosting plan includes PostgreSQL** (the app uses Npgsql). |
+| `PORTAL_NOTIFICATIONS_CONNECTION_STRING` (or `ConnectionStrings__PortalNotifications`) | Optional direct PostgreSQL connection for live-update `LISTEN/NOTIFY`. Use it when `DB_CONNECTION_STRING` goes through a transaction pooler (pgbouncer/Supabase transaction mode), because `LISTEN` needs a direct session connection. Falls back to the normal DB connection. |
 | `JWT_SECRET` | Signing key, **at least 32 characters**. Startup fails if missing or too short. |
 | `JWT_ISSUER` | JWT issuer claim (e.g. `SalesPortalAPI`). |
 | `JWT_AUDIENCE` | JWT audience claim (e.g. `SalesPortalClient`). |

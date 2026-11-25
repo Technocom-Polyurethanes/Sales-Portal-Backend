@@ -854,8 +854,17 @@ The server ends the stream after at most 30 minutes, or when the token expires, 
 deactivated user cannot stay connected. A client reconnects (`retry` is 5 seconds) and should
 reload what it shows, because changes made while it was disconnected are not replayed.
 
-Events reach the browsers connected to the same server process. Changes made directly in the
-database, outside the API, are not announced.
+Events are announced in-process and, for direct PostgreSQL writes, through a dedicated
+`LISTEN portal_changes` connection. Statement-level `AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE`
+triggers on the live data tables send `pg_notify('portal_changes', <table name>)`; the API
+invalidates its reference-data cache first, then publishes the affected topics. The notification
+payload contains only the table name, never row data.
+
+Configure `ConnectionStrings:PortalNotifications` / `PORTAL_NOTIFICATIONS_CONNECTION_STRING` when
+the main connection goes through a transaction pooler, because `LISTEN` requires a direct session
+connection. It falls back to the normal database connection string. If the listener cannot connect,
+the API still starts and keeps the in-process publish path. After every (re)connect the server
+re-announces all mapped tables because notifications during a disconnect are lost.
 
 ## Additive contract summary
 
