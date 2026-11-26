@@ -114,15 +114,26 @@ public sealed class NotificationPublisher : INotificationPublisher
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
 
         var recipients = payload.Recipients;
-        for (var offset = 0; offset < recipients.Count; offset += RecipientsPerNotice)
+        for (var offset = 0; offset < recipients.Count;)
         {
-            var batch = new NotificationEventPayload(
-                payload.Notification,
-                recipients.Skip(offset).Take(RecipientsPerNotice).ToArray());
-            var json = JsonSerializer.Serialize(batch, NotificationJson.Options);
+            var count = Math.Min(RecipientsPerNotice, recipients.Count - offset);
+            string json;
+            while (true)
+            {
+                var batch = new NotificationEventPayload(
+                    payload.Notification,
+                    recipients.Skip(offset).Take(count).ToArray());
+                json = JsonSerializer.Serialize(batch, NotificationJson.Options);
+                if (Encoding.UTF8.GetByteCount(json) <= MaxPayloadBytes || count == 1) break;
+                count /= 2;
+            }
+            offset += count;
+
             if (Encoding.UTF8.GetByteCount(json) > MaxPayloadBytes)
             {
-                _broadcaster.Publish(batch);
+                _logger.LogWarning(
+                    "Notification payload for {Type} exceeds the notify limit.",
+                    payload.Notification.Type);
                 continue;
             }
 
