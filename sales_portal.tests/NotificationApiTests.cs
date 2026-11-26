@@ -36,6 +36,18 @@ public class NotificationApiTests : IClassFixture<SalesPortalApiFactory>
     }
 
     [Fact]
+    public async Task An_overflowing_page_returns_an_empty_page_not_a_server_error()
+    {
+        using var client = _factory.CreateAuthenticatedClient();
+
+        var response = await client.GetAsync("/api/notifications?page=2147483647&pageSize=100");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Empty(body.GetProperty("items").EnumerateArray());
+    }
+
+    [Fact]
     public async Task Inbox_is_scoped_to_the_signed_in_user()
     {
         var ownerId = _factory.SeedUser(UserRole.Admin);
