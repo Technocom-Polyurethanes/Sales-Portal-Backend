@@ -71,12 +71,22 @@ public sealed class NotificationService : INotificationService
         return true;
     }
 
-    public Task<int> MarkAllReadAsync(Guid userId, CancellationToken cancellationToken) =>
-        _db.Notifications
+    public async Task<int> MarkAllReadAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var unread = await _db.Notifications
             .Where(n => n.RecipientUserId == userId && n.ReadAt == null)
-            .ExecuteUpdateAsync(
-                setters => setters.SetProperty(n => n.ReadAt, DateTimeOffset.UtcNow),
-                cancellationToken);
+            .ToListAsync(cancellationToken);
+        if (unread.Count == 0) return 0;
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var notification in unread)
+        {
+            notification.ReadAt = now;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return unread.Count;
+    }
 
     private static NotificationDto Map(Notification notification)
     {
