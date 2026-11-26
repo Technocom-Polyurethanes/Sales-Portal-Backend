@@ -14,9 +14,9 @@ public static class NotificationPublishing
 {
     public static void PublishInBackground(
         this INotificationPublisher? publisher,
-        NotificationEvent notification)
+        NotificationEvent? notification)
     {
-        if (publisher is null)
+        if (publisher is null || notification is null)
         {
             return;
         }

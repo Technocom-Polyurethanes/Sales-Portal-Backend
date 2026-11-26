@@ -6,6 +6,7 @@ using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
@@ -34,17 +35,26 @@ public class UserService : IUserService
     private readonly IRepository<Offer> _offers;
     private readonly IReferenceDataCache _cache;
     private readonly IChangeBroadcaster _changes;
+    private readonly ICurrentActor? _actor;
+    private readonly INotificationPublisher? _publisher;
+    private readonly INotificationBroadcaster? _notifications;
 
     public UserService(
         IRepository<User> users,
         IRepository<Offer> offers,
         IReferenceDataCache? cache = null,
-        IChangeBroadcaster? changes = null)
+        IChangeBroadcaster? changes = null,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null,
+        INotificationBroadcaster? notifications = null)
     {
         _users = users;
         _offers = offers;
         _cache = cache ?? NoReferenceDataCache.Instance;
         _changes = changes ?? NoChangeBroadcaster.Instance;
+        _actor = actor;
+        _publisher = publisher;
+        _notifications = notifications;
     }
 
     public async Task<PaginatedResultDto<UserDto>> GetPagedAsync(
@@ -150,6 +160,13 @@ public class UserService : IUserService
         await _users.AddAsync(user);
         await _users.SaveChangesAsync(cancellationToken);
         _changes.Publish([ChangeTopics.Users]);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.UserCreated,
+            "user",
+            user.Id,
+            user.FullName,
+            new Dictionary<string, object?> { ["role"] = user.Role.ToString() }));
         return Map(user);
     }
 
@@ -168,6 +185,8 @@ public class UserService : IUserService
 
         var newRole = dto.Role!.Value;
         var newIsActive = dto.IsActive ?? user.IsActive;
+        var previousRole = user.Role;
+        var wasActive = user.IsActive;
 
         // Never let the system end up without an active administrator.
         var losesAdminAccess = user.Role == UserRole.Admin && user.IsActive
@@ -199,6 +218,39 @@ public class UserService : IUserService
 
         await _users.SaveChangesAsync(cancellationToken);
         _changes.Publish([ChangeTopics.Users]);
+
+        var deactivated = wasActive && !user.IsActive;
+        var roleChanged = previousRole != user.Role;
+        if (deactivated || roleChanged)
+        {
+            _notifications?.CloseUserSubscriptions(id);
+        }
+
+        if (deactivated)
+        {
+            _publisher.PublishInBackground(NotificationEventFactory.Create(
+                _actor,
+                NotificationTypes.UserDeactivated,
+                "user",
+                id,
+                user.FullName));
+        }
+
+        if (roleChanged)
+        {
+            _publisher.PublishInBackground(NotificationEventFactory.Create(
+                _actor,
+                NotificationTypes.UserRoleChanged,
+                "user",
+                id,
+                user.FullName,
+                new Dictionary<string, object?>
+                {
+                    ["from"] = previousRole.ToString(),
+                    ["to"] = user.Role.ToString()
+                }));
+        }
+
         return Map(user);
     }
 

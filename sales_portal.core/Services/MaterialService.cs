@@ -3,6 +3,7 @@ using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.core.Notifications;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
 
@@ -16,15 +17,21 @@ public class MaterialService : IMaterialService
     private readonly IRepository<Material> _materials;
     private readonly IRepository<Offer> _offers;
     private readonly IReferenceDataCache _cache;
+    private readonly ICurrentActor? _actor;
+    private readonly INotificationPublisher? _publisher;
 
     public MaterialService(
         IRepository<Material> materials,
         IRepository<Offer> offers,
-        IReferenceDataCache? cache = null)
+        IReferenceDataCache? cache = null,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
     {
         _materials = materials;
         _offers = offers;
         _cache = cache ?? NoReferenceDataCache.Instance;
+        _actor = actor;
+        _publisher = publisher;
     }
 
     public async Task<PaginatedResultDto<MaterialLookupItemDto>> LookupAsync(
@@ -189,6 +196,12 @@ public class MaterialService : IMaterialService
         await _materials.AddAsync(material);
         await _materials.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Materials);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.MaterialCreated,
+            "material",
+            material.Id,
+            material.Name));
 
         return await GetByIdAsync(material.Id, cancellationToken)
             ?? throw new NotFoundException("Material was not found after creation.");
@@ -254,9 +267,16 @@ public class MaterialService : IMaterialService
             .ToListAsync(cancellationToken);
         _offers.RemoveRange(offers);
 
+        var label = material.Name;
         _materials.Remove(material);
         await _materials.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Materials, CacheRegions.Catalog, CacheRegions.Offers);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.MaterialDeleted,
+            "material",
+            null,
+            label));
         return true;
     }
 

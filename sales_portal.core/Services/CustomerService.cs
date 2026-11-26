@@ -3,6 +3,7 @@ using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.core.Notifications;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
 
@@ -19,15 +20,21 @@ public class CustomerService : ICustomerService
     private readonly IRepository<Customer> _customers;
     private readonly IRepository<Offer> _offers;
     private readonly IReferenceDataCache _cache;
+    private readonly ICurrentActor? _actor;
+    private readonly INotificationPublisher? _publisher;
 
     public CustomerService(
         IRepository<Customer> customers,
         IRepository<Offer> offers,
-        IReferenceDataCache? cache = null)
+        IReferenceDataCache? cache = null,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
     {
         _customers = customers;
         _offers = offers;
         _cache = cache ?? NoReferenceDataCache.Instance;
+        _actor = actor;
+        _publisher = publisher;
     }
 
     public async Task<PaginatedResultDto<CustomerLookupItemDto>> LookupAsync(
@@ -296,6 +303,12 @@ public class CustomerService : ICustomerService
         await _customers.AddAsync(customer);
         await _customers.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Customers);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.CustomerCreated,
+            "customer",
+            customer.Id,
+            customer.Name));
 
         return await GetByIdWithHistoryAsync(customer.Id, cancellationToken)
             ?? throw new NotFoundException("Customer was not found after creation.");
@@ -370,9 +383,16 @@ public class CustomerService : ICustomerService
             .ToListAsync(cancellationToken);
         _offers.RemoveRange(offers);
 
+        var label = customer.Name;
         _customers.Remove(customer);
         await _customers.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Customers, CacheRegions.Offers);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.CustomerDeleted,
+            "customer",
+            null,
+            label));
         return true;
     }
 

@@ -3,6 +3,7 @@ using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.core.Notifications;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
 
@@ -15,11 +16,19 @@ public class BankAccountService : IBankAccountService
 
     private readonly IRepository<BankAccount> _bankAccounts;
     private readonly IReferenceDataCache _cache;
+    private readonly ICurrentActor? _actor;
+    private readonly INotificationPublisher? _publisher;
 
-    public BankAccountService(IRepository<BankAccount> bankAccounts, IReferenceDataCache? cache = null)
+    public BankAccountService(
+        IRepository<BankAccount> bankAccounts,
+        IReferenceDataCache? cache = null,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
     {
         _bankAccounts = bankAccounts;
         _cache = cache ?? NoReferenceDataCache.Instance;
+        _actor = actor;
+        _publisher = publisher;
     }
 
     public async Task<PaginatedResultDto<BankAccountDto>> GetPagedAsync(
@@ -75,6 +84,12 @@ public class BankAccountService : IBankAccountService
         await _bankAccounts.AddAsync(account);
         await _bankAccounts.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Catalog);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.BankCreated,
+            "bank",
+            account.Id,
+            account.Bank));
 
         return await GetByIdAsync(account.Id, cancellationToken)
             ?? throw new NotFoundException("Bank account was not found after creation.");
@@ -114,9 +129,16 @@ public class BankAccountService : IBankAccountService
             return false;
         }
 
+        var label = account.Bank;
         _bankAccounts.Remove(account);
         await _bankAccounts.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Catalog);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.BankDeleted,
+            "bank",
+            null,
+            label));
         return true;
     }
 
