@@ -1,0 +1,161 @@
+using System.Collections.Concurrent;
+using System.Threading.Channels;
+
+namespace sales_portal.core.Notifications;
+
+/// <summary>Routes stored notifications to the open streams of their recipient only.</summary>
+public interface INotificationBroadcaster
+{
+    INotificationSubscription Subscribe(Guid userId);
+
+    void Publish(NotificationEventPayload payload);
+
+    /// <summary>Ends every stream of a user whose account was deactivated or changed role.</summary>
+    void CloseUserSubscriptions(Guid userId);
+}
+
+/// <summary>One open SSE stream, addressed to one user.</summary>
+public interface INotificationSubscription : IDisposable
+{
+    /// <summary>Waits for the next notification; null means the stream was closed by the server.</summary>
+    Task<NotificationDto?> WaitAsync(CancellationToken cancellationToken);
+}
+
+public sealed class NotificationBroadcaster : INotificationBroadcaster
+{
+    private const int DedupeLimit = 100;
+
+    private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Subscription, byte>> _users = new();
+
+    public int SubscriberCount => _users.Values.Sum(subscriptions => subscriptions.Count);
+
+    public INotificationSubscription Subscribe(Guid userId)
+    {
+        var subscription = new Subscription(this, userId);
+        _users.GetOrAdd(userId, _ => new()).TryAdd(subscription, 0);
+        return subscription;
+    }
+
+    public void Publish(NotificationEventPayload payload)
+    {
+        foreach (var delivery in payload.Recipients)
+        {
+            if (!_users.TryGetValue(delivery.UserId, out var subscriptions))
+            {
+                continue;
+            }
+
+            var notification = payload.Notification with { Id = delivery.NotificationId };
+            foreach (var subscription in subscriptions.Keys)
+            {
+                subscription.Add(notification);
+            }
+        }
+    }
+
+    public void CloseUserSubscriptions(Guid userId)
+    {
+        if (_users.TryRemove(userId, out var subscriptions))
+        {
+            foreach (var subscription in subscriptions.Keys)
+            {
+                subscription.Close();
+            }
+        }
+    }
+
+    private sealed class Subscription : INotificationSubscription
+    {
+        private readonly NotificationBroadcaster _owner;
+        private readonly Guid _userId;
+        private readonly object _gate = new();
+        private readonly Queue<Guid> _recent = new();
+        private readonly HashSet<Guid> _seen = new();
+        private readonly Channel<NotificationDto> _channel =
+            Channel.CreateUnbounded<NotificationDto>(new UnboundedChannelOptions
+            {
+                SingleReader = true,
+                SingleWriter = false
+            });
+
+        public Subscription(NotificationBroadcaster owner, Guid userId)
+        {
+            _owner = owner;
+            _userId = userId;
+        }
+
+        public void Add(NotificationDto notification)
+        {
+            lock (_gate)
+            {
+                // Dual delivery (pg_notify plus the in-process fallback) must never toast twice.
+                if (!_seen.Add(notification.Id))
+                {
+                    return;
+                }
+
+                _recent.Enqueue(notification.Id);
+                if (_recent.Count > DedupeLimit)
+                {
+                    _seen.Remove(_recent.Dequeue());
+                }
+            }
+
+            _channel.Writer.TryWrite(notification);
+        }
+
+        public void Close() => _channel.Writer.TryComplete();
+
+        public async Task<NotificationDto?> WaitAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (ChannelClosedException)
+            {
+                return null;
+            }
+        }
+
+        public void Dispose()
+        {
+            Close();
+            if (_owner._users.TryGetValue(_userId, out var subscriptions))
+            {
+                subscriptions.TryRemove(this, out _);
+                if (subscriptions.IsEmpty)
+                {
+                    _owner._users.TryRemove(_userId, out _);
+                }
+            }
+        }
+    }
+}
+
+/// <summary>No-op broadcaster for tests and hosts without an API.</summary>
+public sealed class NoNotificationBroadcaster : INotificationBroadcaster
+{
+    public static readonly NoNotificationBroadcaster Instance = new();
+
+    public INotificationSubscription Subscribe(Guid userId) => new IdleSubscription();
+
+    public void Publish(NotificationEventPayload payload)
+    {
+    }
+
+    public void CloseUserSubscriptions(Guid userId)
+    {
+    }
+
+    private sealed class IdleSubscription : INotificationSubscription
+    {
+        public Task<NotificationDto?> WaitAsync(CancellationToken cancellationToken) =>
+            Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ContinueWith<NotificationDto?>(_ => null, cancellationToken);
+
+        public void Dispose()
+        {
+        }
+    }
+}
