@@ -860,11 +860,14 @@ triggers on the live data tables send `pg_notify('portal_changes', <table name>)
 invalidates its reference-data cache first, then publishes the affected topics. The notification
 payload contains only the table name, never row data.
 
-Configure `ConnectionStrings:PortalNotifications` / `PORTAL_NOTIFICATIONS_CONNECTION_STRING` when
-the main connection goes through a transaction pooler, because `LISTEN` requires a direct session
-connection. It falls back to the normal database connection string. If the listener cannot connect,
-the API still starts and keeps the in-process publish path. After every (re)connect the server
-re-announces all mapped tables because notifications during a disconnect are lost.
+`ConnectionStrings:PortalNotifications` / `PORTAL_NOTIFICATIONS_CONNECTION_STRING` overrides the
+connection used for live updates; it otherwise falls back to the normal database connection. Set it
+only when the host offers a direct/session-mode connection. Transaction poolers such as MonsterASP's
+PgBouncer do not support `LISTEN`, so the API also polls `pg_stat_all_tables` row counters every
+second and announces tables whose counters changed. In-process publishes and the poll fallback keep
+live updates working on poolers; `LISTEN` remains the low-latency path where it is available. After
+every listener (re)connect the server re-announces all mapped tables because notifications during a
+disconnect are lost.
 
 ## Additive contract summary
 

@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using sales_portal.api.Live;
 using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Live;
@@ -51,6 +52,32 @@ public class LiveUpdateTests
         Assert.Empty(unknownTopics);
 
         Assert.Equal(14, ChangeTopics.MappedTables.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void Change_poll_detects_only_tables_with_new_row_activity()
+    {
+        var before = new Dictionary<string, (long, long, long)>
+        {
+            ["offers"] = (1, 2, 3),
+            ["customers"] = (4, 5, 6)
+        };
+        var after = new Dictionary<string, (long, long, long)>
+        {
+            ["offers"] = (1, 3, 3),
+            ["customers"] = (4, 5, 6)
+        };
+
+        Assert.Empty(PortalChangeNotificationService.ChangedTables(null, after));
+        Assert.Equal(new[] { "offers" }, PortalChangeNotificationService.ChangedTables(before, after));
+        Assert.Empty(PortalChangeNotificationService.ChangedTables(after, after));
+
+        var reset = new Dictionary<string, (long, long, long)>
+        {
+            ["offers"] = (0, 0, 0),
+            ["customers"] = (4, 5, 6)
+        };
+        Assert.Equal(new[] { "offers" }, PortalChangeNotificationService.ChangedTables(after, reset));
     }
 
     [Fact]
