@@ -532,6 +532,7 @@ public class PortalNotificationIntegrationTests
                 services.RemoveAll<IHostedService>();
                 services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
                 services.AddHostedService<sales_portal.api.Notifications.PortalEventNotificationService>();
+                services.AddHostedService<sales_portal.api.Notifications.NotificationPublishWorker>();
             });
         }
 

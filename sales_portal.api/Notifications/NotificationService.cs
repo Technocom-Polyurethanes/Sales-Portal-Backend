@@ -27,7 +27,7 @@ public sealed class NotificationService : INotificationService
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
         // Keep (page - 1) * pageSize inside int: a huge page must be an empty page, not a 500.
-        page = Math.Min(page, int.MaxValue / pageSize + 1);
+        page = Math.Min(page, (int.MaxValue - 1) / pageSize + 1);
 
         var query = _db.Notifications.AsNoTracking().Where(n => n.RecipientUserId == userId);
         if (unreadOnly)

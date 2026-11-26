@@ -40,7 +40,7 @@ public class NotificationApiTests : IClassFixture<SalesPortalApiFactory>
     {
         using var client = _factory.CreateAuthenticatedClient();
 
-        var response = await client.GetAsync("/api/notifications?page=2147483647&pageSize=100");
+        var response = await client.GetAsync("/api/notifications?page=2147483647&pageSize=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
