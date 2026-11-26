@@ -7,8 +7,9 @@ public interface INotificationPublisher
 }
 
 /// <summary>
-/// Announcing is deliberately outside the originating write: a slow or broken notification path
-/// must never fail or delay the response. Failures are swallowed by the publisher.
+/// Announcing is deliberately outside the originating write: the production publisher queues the
+/// work and a hosted worker drains it, so no request waits on notification I/O or leaves a task
+/// untracked. Failures are swallowed by the publisher.
 /// </summary>
 public static class NotificationPublishing
 {
@@ -21,16 +22,13 @@ public static class NotificationPublishing
             return;
         }
 
-        _ = Task.Run(async () =>
+        try
         {
-            try
-            {
-                await publisher.PublishAsync(notification, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch
-            {
-                // The publisher logs the reason; the caller has already committed its write.
-            }
-        });
+            _ = publisher.PublishAsync(notification);
+        }
+        catch
+        {
+            // The publisher logs the reason; the caller has already committed its write.
+        }
     }
 }

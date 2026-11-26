@@ -85,10 +85,14 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IChangeBroadcaster, ChangeBroadcaster>();
 builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
 builder.Services.AddSingleton<INotificationBroadcaster, NotificationBroadcaster>();
-builder.Services.AddSingleton<INotificationPublisher, NotificationPublisher>();
+builder.Services.AddSingleton<NotificationPublisher>();
+builder.Services.AddSingleton<QueuedNotificationPublisher>();
+builder.Services.AddSingleton<INotificationPublisher>(services =>
+    services.GetRequiredService<QueuedNotificationPublisher>());
 builder.Services.AddSingleton<sales_portal.api.Live.ILiveListenerStatus, sales_portal.api.Live.LiveListenerStatus>();
 builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
 builder.Services.AddHostedService<sales_portal.api.Notifications.PortalEventNotificationService>();
+builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationPublishWorker>();
 builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationRetentionService>();
 
 // The actor behind a write; absent outside an authenticated HTTP request.

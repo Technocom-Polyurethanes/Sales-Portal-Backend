@@ -181,6 +181,31 @@ public class NotificationUnitTests
             "Loc/0001-2026/AA"));
     }
 
+    [Fact]
+    public async Task Queued_publisher_hands_the_event_to_the_worker()
+    {
+        var publisher = new QueuedNotificationPublisher(NullLogger<QueuedNotificationPublisher>.Instance);
+        var notification = new NotificationEvent(
+            NotificationTypes.OfferCreated,
+            Guid.NewGuid(),
+            "Actor",
+            "offer",
+            Guid.NewGuid(),
+            "Loc/0001-2026/AA");
+
+        await publisher.PublishAsync(notification);
+
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        NotificationEvent? queued = null;
+        await foreach (var item in publisher.ReadAllAsync(cancellation.Token))
+        {
+            queued = item;
+            break;
+        }
+
+        Assert.Same(notification, queued);
+    }
+
     private static User User(string username, UserRole role, bool isActive = true) => new()
     {
         Id = Guid.NewGuid(),
