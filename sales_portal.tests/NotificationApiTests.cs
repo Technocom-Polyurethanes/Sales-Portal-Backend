@@ -45,6 +45,7 @@ public class NotificationApiTests : IClassFixture<SalesPortalApiFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Empty(body.GetProperty("items").EnumerateArray());
+        Assert.Equal(int.MaxValue, body.GetProperty("page").GetInt32());
     }
 
     [Fact]
