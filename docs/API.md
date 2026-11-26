@@ -354,7 +354,7 @@ the offer detail accept `bankAccountIds`:
   `sortOrder`. Updating, revising or issuing an older offer with a missing selection
   keeps every active account. The resolved list is stored, so a later Settings change
   does not silently change this offer.
-- `[]` returns `400` ("Select at least one bank account.").
+- `[]` stores an offer with no bank accounts, for cash on delivery. The printed document omits the bank details.
 - An unknown or inactive id returns `400` ("Bank account … was not found or is
   inactive.").
 - The selection is stored as `bank_account_ids` (PostgreSQL `uuid[]`) with **no foreign

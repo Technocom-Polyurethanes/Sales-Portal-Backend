@@ -37,15 +37,15 @@ public class OfferBankSelectionTests
     }
 
     [Fact]
-    public async Task Empty_selection_is_rejected()
+    public async Task Empty_selection_stores_no_banks_and_prints_no_bank_details()
     {
         using var db = new TestDatabase();
         var setup = Seed(db);
 
-        var exception = await Assert.ThrowsAsync<ValidationException>(() =>
-            CreateAsync(db, setup, bankAccountIds: []));
+        var detail = await CreateAsync(db, setup, bankAccountIds: []);
 
-        Assert.Contains("Select at least one bank account", exception.Message);
+        Assert.Empty(detail.BankAccountIds!);
+        Assert.Empty(detail.Document!.BankAccounts);
     }
 
     [Fact]

@@ -23,8 +23,8 @@ Rules:
 
 - Draft payload and offer detail get `bankAccountIds: Guid[] | null`.
 - Create/calculate honour it. `null` or omitted = the first two active accounts by `sortOrder`; update/revise/issue keep
-  the all-active selection of legacy offers with no stored ids. The resolved list is stored. An empty array -> 400
-  "Select at least one bank account." An unknown or inactive id -> 400.
+  the all-active selection of legacy offers with no stored ids. The resolved list is stored. An empty array stores no
+  banks, for cash on delivery, and prints no bank details. An unknown or inactive id -> 400.
 - Storage: nullable `uuid[]` column `bank_account_ids` on `offers`, NO foreign key, so deleting an account in Settings never
   fails because an offer used it. Offers created before this feature stay `null` (= all banks, as their snapshot already shows).
 - The printed document / snapshot lists only the selected accounts, ordered by `sortOrder`. Filter the cached

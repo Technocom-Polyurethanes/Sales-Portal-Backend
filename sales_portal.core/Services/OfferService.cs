@@ -740,11 +740,6 @@ public class OfferService : IOfferService
         }
         else
         {
-            if (draft.BankAccountIds.Length == 0)
-            {
-                throw new ValidationException("Select at least one bank account.");
-            }
-
             var unknown = draft.BankAccountIds
                 .FirstOrDefault(id => availableBanks.All(account => account.Id != id));
             if (unknown != Guid.Empty || draft.BankAccountIds.Contains(Guid.Empty))
