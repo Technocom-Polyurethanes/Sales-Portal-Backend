@@ -314,6 +314,7 @@ public class UserService : IUserService
         await _users.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Offers);
         _changes.Publish([ChangeTopics.Users]);
+        _notifications?.CloseUserSubscriptions(id);
         return true;
     }
 

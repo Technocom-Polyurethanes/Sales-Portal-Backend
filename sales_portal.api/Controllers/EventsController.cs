@@ -4,8 +4,10 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using sales_portal.core.Live;
 using sales_portal.core.Notifications;
+using sales_portal.infrastructure.Contexts;
 
 namespace sales_portal.api.Controllers;
 
@@ -29,11 +31,16 @@ public class EventsController : ControllerBase
 
     private readonly IChangeBroadcaster _changes;
     private readonly INotificationBroadcaster _notifications;
+    private readonly AppDbContext _users;
 
-    public EventsController(IChangeBroadcaster changes, INotificationBroadcaster notifications)
+    public EventsController(
+        IChangeBroadcaster changes,
+        INotificationBroadcaster notifications,
+        AppDbContext users)
     {
         _changes = changes;
         _notifications = notifications;
+        _users = users;
     }
 
     [HttpGet]
@@ -62,6 +69,18 @@ public class EventsController : ControllerBase
             return;
         }
 
+        var account = await _users.Users.AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => new { user.IsActive, user.Role })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (account is null || !account.IsActive)
+        {
+            Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+
+        var roleAtConnect = account.Role;
+
         // Subscribe first: a change made while the first bytes are being sent is then not missed.
         using var subscription = _changes.Subscribe();
         using var notificationSubscription = _notifications.Subscribe(userId);
@@ -73,6 +92,16 @@ public class EventsController : ControllerBase
 
             while (!cancellationToken.IsCancellationRequested)
             {
+                // Recheck on each heartbeat so a deactivation or role change on another API
+                // instance closes this stream too, not just the one that served the write.
+                var stillEligible = await _users.Users.AsNoTracking().AnyAsync(
+                    user => user.Id == userId && user.IsActive && user.Role == roleAtConnect,
+                    cancellationToken);
+                if (!stillEligible)
+                {
+                    break;
+                }
+
                 var remaining = endsAt - DateTimeOffset.UtcNow;
                 if (remaining <= TimeSpan.Zero)
                 {
