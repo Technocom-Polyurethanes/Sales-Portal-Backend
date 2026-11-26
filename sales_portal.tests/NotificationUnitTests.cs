@@ -109,6 +109,25 @@ public class NotificationUnitTests
     }
 
     [Fact]
+    public async Task Closing_a_user_does_not_orphan_a_replacement_subscription()
+    {
+        var broadcaster = new NotificationBroadcaster();
+        var owner = Guid.NewGuid();
+        var closed = broadcaster.Subscribe(owner);
+        broadcaster.CloseUserSubscriptions(owner);
+        using var replacement = broadcaster.Subscribe(owner);
+        closed.Dispose();
+
+        var dto = Dto(Guid.NewGuid());
+        broadcaster.Publish(new NotificationEventPayload(
+            dto,
+            [new NotificationDelivery(owner, dto.Id)]));
+
+        using var received = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        Assert.Equal(dto.Id, (await replacement.WaitAsync(received.Token))!.Id);
+    }
+
+    [Fact]
     public async Task Publisher_stores_one_row_per_eligible_recipient_and_announces_it()
     {
         var databaseName = $"notifications-{Guid.NewGuid()}";

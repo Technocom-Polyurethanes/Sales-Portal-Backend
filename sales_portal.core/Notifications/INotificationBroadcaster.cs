@@ -55,7 +55,8 @@ public sealed class NotificationBroadcaster : INotificationBroadcaster
 
     public void CloseUserSubscriptions(Guid userId)
     {
-        if (_users.TryRemove(userId, out var subscriptions))
+        // Keep the bucket: replacing it can orphan a subscription that is being disposed or added.
+        if (_users.TryGetValue(userId, out var subscriptions))
         {
             foreach (var subscription in subscriptions.Keys)
             {
@@ -124,10 +125,6 @@ public sealed class NotificationBroadcaster : INotificationBroadcaster
             if (_owner._users.TryGetValue(_userId, out var subscriptions))
             {
                 subscriptions.TryRemove(this, out _);
-                if (subscriptions.IsEmpty)
-                {
-                    _owner._users.TryRemove(_userId, out _);
-                }
             }
         }
     }
