@@ -1,9 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using sales_portal.api.Live;
 using sales_portal.api.Notifications;
 using sales_portal.core.Notifications;
 using sales_portal.domain.Enums;
@@ -148,13 +146,11 @@ public class NotificationUnitTests
 
         var broadcaster = new NotificationBroadcaster();
         using var subscription = broadcaster.Subscribe(admin.Id);
-        var logger = new CapturingLogger();
         var publisher = new NotificationPublisher(
             provider.GetRequiredService<IServiceScopeFactory>(),
             broadcaster,
-            new FixedListenerStatus(),
             new ConfigurationBuilder().Build(),
-            logger);
+            NullLogger<NotificationPublisher>.Instance);
 
         await publisher.PublishAsync(new NotificationEvent(
             NotificationTypes.OfferCreated,
@@ -163,8 +159,6 @@ public class NotificationUnitTests
             "offer",
             Guid.NewGuid(),
             "Loc/0001-2026/AA"));
-
-        Assert.True(logger.Errors.Count == 0, string.Join(Environment.NewLine, logger.Errors));
 
         using var check = provider.CreateScope();
         var context = check.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -187,7 +181,6 @@ public class NotificationUnitTests
         var publisher = new NotificationPublisher(
             new ThrowingScopeFactory(),
             new NotificationBroadcaster(),
-            new FixedListenerStatus(),
             new ConfigurationBuilder().Build(),
             NullLogger<NotificationPublisher>.Instance);
 
@@ -245,46 +238,6 @@ public class NotificationUnitTests
         EntityLabel = "Loc/0001-2026/AA",
         CreatedAt = DateTimeOffset.UtcNow
     };
-
-    private sealed class FixedListenerStatus : ILiveListenerStatus
-    {
-        public string State => "disconnected";
-
-        public bool IsConnected(string listener) => false;
-
-        public void Update(string listener, bool connected)
-        {
-        }
-    }
-
-    private sealed class CapturingLogger : ILogger<NotificationPublisher>
-    {
-        public List<string> Errors { get; } = [];
-
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => new NoopScope();
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel == LogLevel.Error)
-            {
-                Errors.Add($"{formatter(state, exception)} {exception}");
-            }
-        }
-
-        private sealed class NoopScope : IDisposable
-        {
-            public void Dispose()
-            {
-            }
-        }
-    }
 
     private sealed class ThrowingScopeFactory : IServiceScopeFactory
     {

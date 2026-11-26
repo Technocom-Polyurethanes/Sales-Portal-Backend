@@ -8,7 +8,7 @@ namespace sales_portal.api.Notifications;
 /// <summary>Relays stored notification events from Postgres to the open streams of their recipients.</summary>
 public sealed class PortalEventNotificationService : BackgroundService
 {
-    public const string ListenerName = "notifications";
+    private const string ListenerName = "notifications";
     private const string NotificationChannel = "portal_events";
     private const string ApplicationName = "SalesPortalNotificationListener";
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(500);
