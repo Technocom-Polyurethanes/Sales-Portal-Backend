@@ -126,6 +126,22 @@ public class NotificationUnitTests
     }
 
     [Fact]
+    public async Task Revocation_discards_notifications_already_buffered_for_a_stream()
+    {
+        var broadcaster = new NotificationBroadcaster();
+        var owner = Guid.NewGuid();
+        using var subscription = broadcaster.Subscribe(owner);
+        broadcaster.Publish(new NotificationEventPayload(
+            Dto(Guid.NewGuid()),
+            [new NotificationDelivery(owner, Guid.NewGuid())]));
+
+        broadcaster.CloseUserSubscriptions(owner);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        Assert.Null(await subscription.WaitAsync(timeout.Token));
+    }
+
+    [Fact]
     public async Task Publisher_stores_one_row_per_eligible_recipient_and_announces_it()
     {
         var databaseName = $"notifications-{Guid.NewGuid()}";

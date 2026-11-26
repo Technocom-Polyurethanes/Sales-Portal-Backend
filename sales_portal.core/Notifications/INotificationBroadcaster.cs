@@ -70,6 +70,7 @@ public sealed class NotificationBroadcaster : INotificationBroadcaster
         private readonly NotificationBroadcaster _owner;
         private readonly Guid _userId;
         private readonly object _gate = new();
+        private volatile bool _closed;
         private readonly Queue<Guid> _recent = new();
         private readonly HashSet<Guid> _seen = new();
         private readonly Channel<NotificationDto> _channel =
@@ -89,6 +90,9 @@ public sealed class NotificationBroadcaster : INotificationBroadcaster
         {
             lock (_gate)
             {
+                // A revoked stream must not buffer anything else, even if a notice arrives later.
+                if (_closed) return;
+
                 // Dual delivery (pg_notify plus the in-process fallback) must never toast twice.
                 if (!_seen.Add(notification.Id))
                 {
@@ -105,13 +109,23 @@ public sealed class NotificationBroadcaster : INotificationBroadcaster
             _channel.Writer.TryWrite(notification);
         }
 
-        public void Close() => _channel.Writer.TryComplete();
+        public void Close()
+        {
+            lock (_gate)
+            {
+                _closed = true;
+            }
+            _channel.Writer.TryComplete();
+        }
 
         public async Task<NotificationDto?> WaitAsync(CancellationToken cancellationToken)
         {
             try
             {
-                return await _channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                var notification = await _channel.Reader.ReadAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                // Completing the channel still drains buffered items; a revoked stream gets none.
+                return _closed ? null : notification;
             }
             catch (ChannelClosedException)
             {

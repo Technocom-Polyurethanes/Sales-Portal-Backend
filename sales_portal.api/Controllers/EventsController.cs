@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using sales_portal.core.Live;
 using sales_portal.core.Notifications;
+using sales_portal.domain.Enums;
 using sales_portal.infrastructure.Contexts;
 
 namespace sales_portal.api.Controllers;
@@ -94,10 +95,7 @@ public class EventsController : ControllerBase
             {
                 // Recheck on each heartbeat so a deactivation or role change on another API
                 // instance closes this stream too, not just the one that served the write.
-                var stillEligible = await _users.Users.AsNoTracking().AnyAsync(
-                    user => user.Id == userId && user.IsActive && user.Role == roleAtConnect,
-                    cancellationToken);
-                if (!stillEligible)
+                if (!await StillEligibleAsync(userId, roleAtConnect, cancellationToken))
                 {
                     break;
                 }
@@ -145,6 +143,13 @@ public class EventsController : ControllerBase
                     break;
                 }
 
+                // An account change on another instance can land during the wait. Rechecking here
+                // stops an already-published frame from reaching a now-ineligible browser.
+                if (!await StillEligibleAsync(userId, roleAtConnect, cancellationToken))
+                {
+                    break;
+                }
+
                 if (topics.Count > 0)
                 {
                     var data = JsonSerializer.Serialize(new { topics });
@@ -172,6 +177,14 @@ public class EventsController : ControllerBase
             // Same, reported by the transport as a failed write.
         }
     }
+
+    private async Task<bool> StillEligibleAsync(
+        Guid userId,
+        UserRole role,
+        CancellationToken cancellationToken) =>
+        await _users.Users.AsNoTracking().AnyAsync(
+            user => user.Id == userId && user.IsActive && user.Role == role,
+            cancellationToken);
 
     private Guid? CurrentUserId()
     {
