@@ -51,6 +51,24 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 
 > **To verify:** The MonsterASP help pages (help.monsterasp.net) confirm Web Deploy on port 8172 and the environment variable mechanism. The availability of PostgreSQL depends on the specific hosting plan — **confirm with MonsterASP support that your plan includes PostgreSQL**.
 
+### Live updates and SSE delivery
+
+Both the change listener and the notification listener use a dedicated `LISTEN` connection. Npgsql
+TCP keepalive is enabled with a 15-second interval, and a `SELECT 1` probe runs every 60 seconds;
+a half-open socket therefore fails into the reconnect loop (0.5s to 30s exponential backoff with
+jitter) instead of hanging. `GET /health` reports `liveListener` as `connected` or `disconnected`.
+This is a diagnostic signal only: in-process publishes and the table-counter poll fallback keep
+live updates working when the dedicated connection is unavailable, and local notification delivery
+never depends on it. Every publish also sends `pg_notify`, so healthy instances still receive
+notifications published by another instance.
+
+`/api/events` is a long-lived `text/event-stream` response. The controller sends `Cache-Control:
+no-store, no-transform` and `X-Accel-Buffering: no`, and disables response buffering. The shipped
+`web.config` disables IIS dynamic/static compression and explicitly excludes `text/event-stream`
+from dynamic compression. Keep those settings on any proxy in front of the API: buffering or
+compressing the stream delays toasts and live screen refreshes. Frontend clients use `fetch` with
+the bearer token rather than `EventSource`, because `EventSource` cannot set headers.
+
 ---
 
 ## 3. First-Login Bootstrap
@@ -111,12 +129,13 @@ After merging this PR, the repository owner must set the following **by hand** (
 
 ### MonsterASP Control Panel (Scripting > Environment variables)
 - `DB_CONNECTION_STRING` (or `ConnectionStrings__Default`)
+- `PORTAL_NOTIFICATIONS_CONNECTION_STRING` (only for a direct/session-mode connection)
 - `JWT_SECRET` (≥ 32 chars)
 - `JWT_ISSUER`
 - `JWT_AUDIENCE`
 - `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1`, …
 - `ASPNETCORE_ENVIRONMENT=Production`
-- `Database__AutoMigrate=true` (first deploy / after migrations)
+- `Database__AutoMigrate=true` (first deploy / after migrations; **take a database backup immediately before the release**)
 - `BOOTSTRAP_ADMIN_USERNAME`
 - `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 chars)
 - `BOOTSTRAP_ADMIN_FULL_NAME`
