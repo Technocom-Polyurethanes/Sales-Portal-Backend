@@ -27,6 +27,18 @@ public class ApiContractTests : IClassFixture<SalesPortalApiFactory>
         _factory = factory;
     }
 
+    [Fact]
+    public async Task Health_reports_live_listener_state()
+    {
+        using var client = _factory.CreateClient();
+
+        var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"liveListener\":\"disconnected\"", body, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("Draft")]
     [InlineData("draft")]

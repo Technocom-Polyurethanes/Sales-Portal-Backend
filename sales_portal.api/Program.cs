@@ -215,22 +215,25 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.MapGet("/health", async (AppDbContext dbContext, CancellationToken cancellationToken) =>
+app.MapGet("/health", async (
+    AppDbContext dbContext,
+    sales_portal.api.Live.ILiveListenerStatus liveListener,
+    CancellationToken cancellationToken) =>
 {
     try
     {
         var databaseUp = await dbContext.Database.CanConnectAsync(cancellationToken);
 
         return databaseUp
-            ? Results.Ok(new { status = "Healthy", database = "Up" })
+            ? Results.Ok(new { status = "Healthy", database = "Up", liveListener = liveListener.State })
             : Results.Json(
-                new { status = "Unhealthy", database = "Down" },
+                new { status = "Unhealthy", database = "Down", liveListener = liveListener.State },
                 statusCode: StatusCodes.Status503ServiceUnavailable);
     }
     catch (Exception)
     {
         return Results.Json(
-            new { status = "Unhealthy", database = "Down" },
+            new { status = "Unhealthy", database = "Down", liveListener = liveListener.State },
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 }).AllowAnonymous();
