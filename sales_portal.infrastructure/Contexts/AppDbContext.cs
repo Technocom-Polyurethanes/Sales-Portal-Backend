@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<OfferDeliveryBatch> OfferDeliveryBatches => Set<OfferDeliveryBatch>();
     public DbSet<OfferDeliveryAllocation> OfferDeliveryAllocations => Set<OfferDeliveryAllocation>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
