@@ -82,6 +82,7 @@ builder.Services.AddMemoryCache();
 // invalidates, so it needs the broadcaster.
 builder.Services.AddSingleton<IChangeBroadcaster, ChangeBroadcaster>();
 builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
+builder.Services.AddSingleton<sales_portal.api.Live.ILiveListenerStatus, sales_portal.api.Live.LiveListenerStatus>();
 builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
