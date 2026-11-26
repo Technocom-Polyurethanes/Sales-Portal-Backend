@@ -6,6 +6,7 @@ using sales_portal.core.Calculations;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
+using sales_portal.core.Notifications;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
@@ -24,6 +25,8 @@ public class OfferService : IOfferService
     private readonly ICatalogService _catalogService;
     private readonly IOfferCalculator _calculator;
     private readonly IReferenceDataCache _cache;
+    private readonly ICurrentActor? _actor;
+    private readonly INotificationPublisher? _publisher;
 
     public OfferService(
         IRepository<Offer> offers,
@@ -33,9 +36,13 @@ public class OfferService : IOfferService
         IRepository<OfferDeliveryAllocation> deliveryAllocations,
         ICatalogService catalogService,
         IOfferCalculator calculator,
-        IReferenceDataCache? cache = null)
+        IReferenceDataCache? cache = null,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
     {
         _cache = cache ?? NoReferenceDataCache.Instance;
+        _actor = actor;
+        _publisher = publisher;
         _offers = offers;
         _offerLines = offerLines;
         _offerLinePackagings = offerLinePackagings;
@@ -403,6 +410,12 @@ public class OfferService : IOfferService
         }
 
         _cache.Invalidate(CacheRegions.Offers);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.OfferCreated,
+            "offer",
+            offer.Id,
+            offer.Reference));
 
         return await GetByIdAsync(offer.Id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after creation.");
@@ -548,6 +561,13 @@ public class OfferService : IOfferService
         }
 
         _cache.Invalidate(CacheRegions.Offers);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.OfferRevised,
+            "offer",
+            revisedOffer.Id,
+            revisedOffer.Reference,
+            new Dictionary<string, object?> { ["version"] = revisedOffer.Version }));
 
         return await GetByIdAsync(revisedOffer.Id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after revision.");
@@ -576,6 +596,7 @@ public class OfferService : IOfferService
             await ValidateForIssueAsync(id, cancellationToken);
         }
 
+        var previousStatus = offer.Status;
         offer.Status = dto.Status;
         offer.UpdatedByUserId = currentUserId;
 
@@ -599,6 +620,20 @@ public class OfferService : IOfferService
         }
 
         _cache.Invalidate(CacheRegions.Offers);
+        if (previousStatus != dto.Status)
+        {
+            _publisher.PublishInBackground(NotificationEventFactory.Create(
+                _actor,
+                NotificationTypes.OfferStatusChanged,
+                "offer",
+                offer.Id,
+                offer.Reference,
+                new Dictionary<string, object?>
+                {
+                    ["from"] = previousStatus.ToString(),
+                    ["to"] = dto.Status.ToString()
+                }));
+        }
 
         return await GetByIdAsync(id, cancellationToken)
             ?? throw new NotFoundException("Offer was not found after status update.");
@@ -621,10 +656,17 @@ public class OfferService : IOfferService
         var versions = await _offers.GetAll()
             .Where(o => o.RootOfferId == rootId.Value)
             .ToListAsync(cancellationToken);
+        var label = versions[0].Reference;
         _offers.RemoveRange(versions);
 
         await _offers.SaveChangesAsync(cancellationToken);
         _cache.Invalidate(CacheRegions.Offers);
+        _publisher.PublishInBackground(NotificationEventFactory.Create(
+            _actor,
+            NotificationTypes.OfferDeleted,
+            "offer",
+            null,
+            label));
         return true;
     }
 

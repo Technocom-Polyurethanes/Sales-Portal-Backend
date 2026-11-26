@@ -8,10 +8,12 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using sales_portal.api.Authorization;
 using sales_portal.api.Middleware;
+using sales_portal.api.Notifications;
 using sales_portal.core.Caching;
 using sales_portal.core.Configuration;
 using sales_portal.core.IService;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 using sales_portal.core.Services;
 using sales_portal.domain.Interfaces;
 using sales_portal.infrastructure;
@@ -82,9 +84,22 @@ builder.Services.AddMemoryCache();
 // invalidates, so it needs the broadcaster.
 builder.Services.AddSingleton<IChangeBroadcaster, ChangeBroadcaster>();
 builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
+builder.Services.AddSingleton<INotificationBroadcaster, NotificationBroadcaster>();
+builder.Services.AddSingleton<NotificationPublisher>();
+builder.Services.AddSingleton<QueuedNotificationPublisher>();
+builder.Services.AddSingleton<INotificationPublisher>(services =>
+    services.GetRequiredService<QueuedNotificationPublisher>());
+builder.Services.AddSingleton<sales_portal.api.Live.ILiveListenerStatus, sales_portal.api.Live.LiveListenerStatus>();
 builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
-builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
+builder.Services.AddHostedService<sales_portal.api.Notifications.PortalEventNotificationService>();
+builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationPublishWorker>();
+builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationRetentionService>();
 
+// The actor behind a write; absent outside an authenticated HTTP request.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentActor, CurrentActor>();
+
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
@@ -215,22 +230,25 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.MapGet("/health", async (AppDbContext dbContext, CancellationToken cancellationToken) =>
+app.MapGet("/health", async (
+    AppDbContext dbContext,
+    sales_portal.api.Live.ILiveListenerStatus liveListener,
+    CancellationToken cancellationToken) =>
 {
     try
     {
         var databaseUp = await dbContext.Database.CanConnectAsync(cancellationToken);
 
         return databaseUp
-            ? Results.Ok(new { status = "Healthy", database = "Up" })
+            ? Results.Ok(new { status = "Healthy", database = "Up", liveListener = liveListener.State })
             : Results.Json(
-                new { status = "Unhealthy", database = "Down" },
+                new { status = "Unhealthy", database = "Down", liveListener = liveListener.State },
                 statusCode: StatusCodes.Status503ServiceUnavailable);
     }
     catch (Exception)
     {
         return Results.Json(
-            new { status = "Unhealthy", database = "Down" },
+            new { status = "Unhealthy", database = "Down", liveListener = liveListener.State },
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 }).AllowAnonymous();

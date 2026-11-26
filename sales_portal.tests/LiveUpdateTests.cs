@@ -1,9 +1,11 @@
 using System.Net;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using sales_portal.api.Live;
 using sales_portal.core.Caching;
 using sales_portal.core.DTOs;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 using sales_portal.core.Services;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Models;
@@ -50,6 +52,32 @@ public class LiveUpdateTests
         Assert.Empty(unknownTopics);
 
         Assert.Equal(14, ChangeTopics.MappedTables.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void Change_poll_detects_only_tables_with_new_row_activity()
+    {
+        var before = new Dictionary<string, (long, long, long)>
+        {
+            ["offers"] = (1, 2, 3),
+            ["customers"] = (4, 5, 6)
+        };
+        var after = new Dictionary<string, (long, long, long)>
+        {
+            ["offers"] = (1, 3, 3),
+            ["customers"] = (4, 5, 6)
+        };
+
+        Assert.Empty(PortalChangeNotificationService.ChangedTables(null, after));
+        Assert.Equal(new[] { "offers" }, PortalChangeNotificationService.ChangedTables(before, after));
+        Assert.Empty(PortalChangeNotificationService.ChangedTables(after, after));
+
+        var reset = new Dictionary<string, (long, long, long)>
+        {
+            ["offers"] = (0, 0, 0),
+            ["customers"] = (4, 5, 6)
+        };
+        Assert.Equal(new[] { "offers" }, PortalChangeNotificationService.ChangedTables(after, reset));
     }
 
     [Fact]
@@ -333,6 +361,42 @@ public class EventsEndpointTests : IClassFixture<SalesPortalApiFactory>
         var change = await ReadEventAsync(reader, cancellation.Token);
         Assert.Contains("event: change", change);
         Assert.Contains("data: {\"topics\":[\"offers\"]}", change);
+    }
+
+    [Fact]
+    public async Task A_connected_browser_is_told_about_a_notification()
+    {
+        var userId = Guid.NewGuid();
+        using var client = _factory.CreateAuthenticatedClient(userId);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        using var response = await client.SendAsync(
+            new HttpRequestMessage(HttpMethod.Get, "/api/events"),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellation.Token);
+
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cancellation.Token));
+        Assert.Contains("event: ready", await ReadEventAsync(reader, cancellation.Token));
+
+        var notification = new NotificationDto
+        {
+            Id = Guid.NewGuid(),
+            Type = NotificationTypes.OfferCreated,
+            ActorName = "Actor",
+            EntityType = "offer",
+            EntityId = Guid.NewGuid(),
+            EntityLabel = "Loc/0001-2026/AA",
+            Meta = new Dictionary<string, object?>(),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _factory.Services.GetRequiredService<INotificationBroadcaster>().Publish(
+            new NotificationEventPayload(
+                notification,
+                [new NotificationDelivery(userId, notification.Id)]));
+
+        var frame = await ReadEventAsync(reader, cancellation.Token);
+        Assert.Contains("event: notification", frame);
+        Assert.Contains($"\"id\":\"{notification.Id}\"", frame);
     }
 
     /// <summary>Reads one event: every line up to and including its data line.</summary>

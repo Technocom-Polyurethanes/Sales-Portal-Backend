@@ -13,58 +13,65 @@ public sealed class PortalChangeNotificationService : BackgroundService
 {
     private const string NotificationChannel = "portal_changes";
     private const string ApplicationName = "SalesPortalLiveListener";
-    private static readonly TimeSpan CoalesceWindow = TimeSpan.FromMilliseconds(250);
+    private const string ListenerName = "changes";
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
 
     private readonly IConfiguration _configuration;
     private readonly IReferenceDataCache _cache;
     private readonly IChangeBroadcaster _changes;
+    private readonly ILiveListenerStatus _status;
     private readonly ILogger<PortalChangeNotificationService> _logger;
 
     public PortalChangeNotificationService(
         IConfiguration configuration,
         IReferenceDataCache cache,
         IChangeBroadcaster changes,
+        ILiveListenerStatus status,
         ILogger<PortalChangeNotificationService> logger)
     {
         _configuration = configuration;
         _cache = cache;
         _changes = changes;
+        _status = status;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var connectionString = ResolveConnectionString(_configuration);
+        var connectionString = PostgresNotificationListener.ResolveConnectionString(_configuration);
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             _logger.LogWarning("Postgres live updates are disabled: no notification connection string is configured.");
             return;
         }
 
+        _status.Update(ListenerName, false);
+        // LISTEN is unsupported by transaction poolers, so poll table counters as a fallback.
+        _ = PollForChangesAsync(connectionString, stoppingToken);
         var retryDelay = InitialRetryDelay;
         while (!stoppingToken.IsCancellationRequested)
         {
             TimeSpan? wait = null;
             try
             {
-                var settings = new NpgsqlConnectionStringBuilder(connectionString)
-                {
-                    ApplicationName = ApplicationName
-                };
-
-                await using var connection = new NpgsqlConnection(settings.ConnectionString);
+                await using var connection = PostgresNotificationListener.CreateConnection(connectionString, ApplicationName);
                 await connection.OpenAsync(stoppingToken).ConfigureAwait(false);
                 await using var command = new NpgsqlCommand($"LISTEN {NotificationChannel}", connection);
                 await command.ExecuteNonQueryAsync(stoppingToken).ConfigureAwait(false);
 
+                _status.Update(ListenerName, true);
                 _logger.LogInformation("Listening for Postgres changes on {Channel}.", NotificationChannel);
                 retryDelay = InitialRetryDelay;
 
                 // Changes made while disconnected are lost, so announce every table once on each listen.
                 Announce(ChangeTopics.MappedTables);
-                await WaitForNotificationsAsync(connection, stoppingToken).ConfigureAwait(false);
+                await PostgresNotificationListener.ListenAsync(
+                    connection,
+                    NotificationChannel,
+                    tables => Announce(tables),
+                    stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -81,6 +88,10 @@ public sealed class PortalChangeNotificationService : BackgroundService
                     exception.GetType().Name,
                     wait.Value);
             }
+            finally
+            {
+                _status.Update(ListenerName, false);
+            }
 
             if (wait is { } delay)
             {
@@ -96,62 +107,65 @@ public sealed class PortalChangeNotificationService : BackgroundService
         }
     }
 
-    private async Task WaitForNotificationsAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    public static string[] ChangedTables(
+        IReadOnlyDictionary<string, (long Ins, long Upd, long Del)>? previous,
+        IReadOnlyDictionary<string, (long Ins, long Upd, long Del)> current) =>
+        previous is null
+            ? []
+            : current
+                .Where(entry => !previous.TryGetValue(entry.Key, out var old) || old != entry.Value)
+                .Select(entry => entry.Key)
+                .ToArray();
+
+    private async Task PollForChangesAsync(string connectionString, CancellationToken cancellationToken)
     {
-        var pending = new HashSet<string>(StringComparer.Ordinal);
-        var gate = new object();
-
-        void Collect(object? _, NpgsqlNotificationEventArgs notification)
+        Dictionary<string, (long Ins, long Upd, long Del)>? previous = null;
+        var failed = false;
+        while (!cancellationToken.IsCancellationRequested)
         {
-            if (!string.Equals(notification.Channel, NotificationChannel, StringComparison.Ordinal))
+            try
             {
-                return;
-            }
+                await using var connection = PostgresNotificationListener.CreateConnection(connectionString, "SalesPortalChangePoll");
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await using var command = new NpgsqlCommand(
+                    "SELECT relname, n_tup_ins, n_tup_upd, n_tup_del FROM pg_stat_all_tables WHERE schemaname = 'public' AND relname::text = ANY(@tables)",
+                    connection);
+                command.Parameters.AddWithValue("tables", ChangeTopics.MappedTables.ToArray());
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
-            lock (gate)
-            {
-                pending.Add(notification.Payload);
-            }
-        }
-
-        connection.Notification += Collect;
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                await connection.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                var windowEnd = DateTime.UtcNow + CoalesceWindow;
-                while (!cancellationToken.IsCancellationRequested)
+                var current = new Dictionary<string, (long, long, long)>(StringComparer.Ordinal);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    var remaining = windowEnd - DateTime.UtcNow;
-                    if (remaining <= TimeSpan.Zero)
-                    {
-                        break;
-                    }
-
-                    await connection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+                    current[reader.GetString(0)] = (reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3));
                 }
 
-                string[] tables;
-                lock (gate)
-                {
-                    tables = pending.ToArray();
-                    pending.Clear();
-                }
+                var changed = ChangedTables(previous, current);
+                if (changed.Length > 0) Announce(changed);
 
-                if (tables.Length == 0)
-                {
-                    continue;
-                }
-
-                _logger.LogDebug("Coalesced {TableCount} changed tables into one announcement.", tables.Length);
-                Announce(tables);
+                previous = current;
+                failed = false;
             }
-        }
-        finally
-        {
-            connection.Notification -= Collect;
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                if (!failed)
+                {
+                    _logger.LogWarning("Postgres change poll failed ({ErrorType}).", exception.GetType().Name);
+                }
+                failed = true;
+            }
+
+            try
+            {
+                await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
@@ -178,16 +192,6 @@ public sealed class PortalChangeNotificationService : BackgroundService
         _cache.Invalidate(regions.ToArray());
         _changes.Publish(topics.Except(ChangeTopics.ForRegions(regions), StringComparer.Ordinal).ToArray());
     }
-
-    private static string? ResolveConnectionString(IConfiguration configuration) =>
-        FirstNonEmpty(
-            Environment.GetEnvironmentVariable("PORTAL_NOTIFICATIONS_CONNECTION_STRING"),
-            configuration.GetConnectionString("PortalNotifications"),
-            configuration.GetConnectionString("Default"),
-            Environment.GetEnvironmentVariable("DB_CONNECTION_STRING"));
-
-    private static string? FirstNonEmpty(params string?[] values) =>
-        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private static TimeSpan Jitter(TimeSpan delay) =>
         TimeSpan.FromMilliseconds(Math.Min(

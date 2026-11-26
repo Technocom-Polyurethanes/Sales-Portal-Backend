@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using sales_portal.core.Notifications;
 using sales_portal.core.Services;
+using sales_portal.domain.Enums;
 using sales_portal.domain.Models;
 using Xunit;
 
@@ -126,6 +128,78 @@ public class ImportCommitTests
 
         Assert.Equal(1, result.Updated);
         Assert.Equal(15m, (await db.Context.Materials.SingleAsync()).ReferencePricePerKg);
+    }
+
+    [Fact]
+    public async Task Commit_attributes_the_notification_to_the_committer_and_bounds_the_label()
+    {
+        using var db = new TestDatabase();
+        var previewerId = Guid.NewGuid();
+        var committerId = Guid.NewGuid();
+        db.Context.Users.AddRange(
+            new User
+            {
+                Id = previewerId,
+                Username = "previewer",
+                FullName = "Previewer",
+                Initials = "PV",
+                PasswordHash = "not-used",
+                Role = UserRole.Admin
+            },
+            new User
+            {
+                Id = committerId,
+                Username = "committer",
+                FullName = "Committer",
+                Initials = "CM",
+                PasswordHash = "not-used",
+                Role = UserRole.Admin
+            });
+        await db.Context.SaveChangesAsync();
+
+        var publisher = new CapturingPublisher();
+        var service = TestFactory.CreateImportService(
+            db.Context,
+            publisher,
+            new TestActor { UserId = committerId, DisplayName = "Committer" });
+        var fileName = new string('a', 256) + ".csv";
+        var content = ImportTestFiles.Csv(
+            ImportTestFiles.CustomerHeader + "\r\nCUST-NEW,,New customer,,,,,,,,,Address,,\r\n");
+
+        var preview = await service.PreviewAsync(
+            "customers",
+            content,
+            fileName,
+            content.Length,
+            previewerId,
+            CancellationToken.None);
+        await service.CommitAsync(preview.ImportId, CancellationToken.None);
+
+        Assert.NotNull(publisher.Published);
+        Assert.Equal(committerId, publisher.Published!.ActorUserId);
+        Assert.Equal("Committer", publisher.Published.ActorName);
+        Assert.Equal(250, publisher.Published.EntityLabel.Length);
+        Assert.Equal(fileName[..250], publisher.Published.EntityLabel);
+    }
+
+    private sealed class TestActor : ICurrentActor
+    {
+        public Guid? UserId { get; init; }
+
+        public string? DisplayName { get; init; }
+    }
+
+    private sealed class CapturingPublisher : INotificationPublisher
+    {
+        public NotificationEvent? Published { get; private set; }
+
+        public Task PublishAsync(
+            NotificationEvent notification,
+            CancellationToken cancellationToken = default)
+        {
+            Published = notification;
+            return Task.CompletedTask;
+        }
     }
 
     private static Task<sales_portal.core.DTOs.ImportPreviewDto> PreviewAsync(

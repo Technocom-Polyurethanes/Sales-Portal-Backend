@@ -36,7 +36,7 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 | Variable | Description |
 |----------|-------------|
 | `DB_CONNECTION_STRING` (or `ConnectionStrings__Default`) | PostgreSQL connection string. **Confirm your hosting plan includes PostgreSQL** (the app uses Npgsql). |
-| `PORTAL_NOTIFICATIONS_CONNECTION_STRING` (or `ConnectionStrings__PortalNotifications`) | Optional direct PostgreSQL connection for live-update `LISTEN/NOTIFY`. Use it when `DB_CONNECTION_STRING` goes through a transaction pooler (pgbouncer/Supabase transaction mode), because `LISTEN` needs a direct session connection. Falls back to the normal DB connection. |
+| `PORTAL_NOTIFICATIONS_CONNECTION_STRING` (or `ConnectionStrings__PortalNotifications`) | Optional separate connection for live updates; falls back to `DB_CONNECTION_STRING`. Set it only on hosts that offer a direct/session-mode connection. MonsterASP routes every connection through PgBouncer transaction mode, where `LISTEN` is unsupported, so the API also polls table counters as a fallback. |
 | `JWT_SECRET` | Signing key, **at least 32 characters**. Startup fails if missing or too short. |
 | `JWT_ISSUER` | JWT issuer claim (e.g. `SalesPortalAPI`). |
 | `JWT_AUDIENCE` | JWT audience claim (e.g. `SalesPortalClient`). |
@@ -50,6 +50,24 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 | `BOOTSTRAP_ADMIN_EMAIL` | (Optional, first-login only) Email of the admin. |
 
 > **To verify:** The MonsterASP help pages (help.monsterasp.net) confirm Web Deploy on port 8172 and the environment variable mechanism. The availability of PostgreSQL depends on the specific hosting plan — **confirm with MonsterASP support that your plan includes PostgreSQL**.
+
+### Live updates and SSE delivery
+
+Both the change listener and the notification listener use a dedicated `LISTEN` connection. Npgsql
+TCP keepalive is enabled with a 15-second interval, and a `SELECT 1` probe runs every 60 seconds;
+a half-open socket therefore fails into the reconnect loop (0.5s to 30s exponential backoff with
+jitter) instead of hanging. `GET /health` reports `liveListener` as `connected` or `disconnected`.
+This is a diagnostic signal only: in-process publishes and the table-counter poll fallback keep
+live updates working when the dedicated connection is unavailable, and local notification delivery
+never depends on it. Every publish also sends `pg_notify`, so healthy instances still receive
+notifications published by another instance.
+
+`/api/events` is a long-lived `text/event-stream` response. The controller sends `Cache-Control:
+no-store, no-transform` and `X-Accel-Buffering: no`, and disables response buffering. The shipped
+`web.config` disables IIS dynamic/static compression and explicitly excludes `text/event-stream`
+from dynamic compression. Keep those settings on any proxy in front of the API: buffering or
+compressing the stream delays toasts and live screen refreshes. Frontend clients use `fetch` with
+the bearer token rather than `EventSource`, because `EventSource` cannot set headers.
 
 ---
 
@@ -111,12 +129,13 @@ After merging this PR, the repository owner must set the following **by hand** (
 
 ### MonsterASP Control Panel (Scripting > Environment variables)
 - `DB_CONNECTION_STRING` (or `ConnectionStrings__Default`)
+- `PORTAL_NOTIFICATIONS_CONNECTION_STRING` (only for a direct/session-mode connection)
 - `JWT_SECRET` (≥ 32 chars)
 - `JWT_ISSUER`
 - `JWT_AUDIENCE`
 - `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1`, …
 - `ASPNETCORE_ENVIRONMENT=Production`
-- `Database__AutoMigrate=true` (first deploy / after migrations)
+- `Database__AutoMigrate=true` (first deploy / after migrations; **take a database backup immediately before the release**)
 - `BOOTSTRAP_ADMIN_USERNAME`
 - `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 chars)
 - `BOOTSTRAP_ADMIN_FULL_NAME`

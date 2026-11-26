@@ -10,8 +10,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
+using sales_portal.api.Live;
 using sales_portal.core.Caching;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 using sales_portal.infrastructure.Contexts;
 using Xunit;
 
@@ -154,6 +156,263 @@ public class PortalNotificationIntegrationTests
     }
 
     [Fact]
+    public async Task Direct_offer_update_publishes_topic_and_invalidates_cache()
+    {
+        if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
+
+        using var factory = new PortalNotificationApiFactory(TestConnectionString()!);
+        await factory.PrepareDatabaseAsync();
+
+        var userId = Guid.NewGuid();
+        using var client = factory.CreateAuthenticatedClient(userId);
+        await SeedOfferAsync(factory, userId, "Loc/DIRECT-OFFER-1");
+
+        var cache = (ReferenceDataCache)factory.Services.GetRequiredService<IReferenceDataCache>();
+        var loads = 0;
+        await cache.GetOrCreateAsync(
+            "offers:integration",
+            new[] { CacheRegions.Offers },
+            async () =>
+            {
+                loads++;
+                await using var context = factory.CreateDbContext();
+                return await context.Offers
+                    .Where(o => o.Reference == "Loc/DIRECT-OFFER-1")
+                    .Select(o => o.Reference)
+                    .SingleAsync();
+            });
+        Assert.Equal(1, loads);
+
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var response = await client.SendAsync(
+            new HttpRequestMessage(HttpMethod.Get, "/api/events"),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellation.Token);
+        response.EnsureSuccessStatusCode();
+
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cancellation.Token));
+        await ReadEventAsync(reader, "ready", cancellation.Token);
+
+        await using (var admin = new NpgsqlConnection(TestConnectionString()!))
+        {
+            await admin.OpenAsync(cancellation.Token);
+            await using var command = admin.CreateCommand();
+            command.CommandText =
+                "UPDATE offers SET reference = 'Loc/DIRECT-OFFER-2' WHERE reference = 'Loc/DIRECT-OFFER-1'";
+            await command.ExecuteNonQueryAsync(cancellation.Token);
+        }
+
+        var change = await ReadEventAsync(reader, "change", cancellation.Token);
+        using var json = JsonDocument.Parse(ExtractData(change));
+        var topics = json.RootElement.GetProperty("topics").EnumerateArray().Select(e => e.GetString()).ToArray();
+        Assert.Contains("offers", topics);
+
+        var refreshed = await cache.GetOrCreateAsync(
+            "offers:integration",
+            new[] { CacheRegions.Offers },
+            async () =>
+            {
+                loads++;
+                await using var context = factory.CreateDbContext();
+                return await context.Offers
+                    .Where(o => o.Reference == "Loc/DIRECT-OFFER-2")
+                    .Select(o => o.Reference)
+                    .SingleAsync();
+            });
+        Assert.Equal("Loc/DIRECT-OFFER-2", refreshed);
+        Assert.Equal(2, loads);
+    }
+
+    [Fact]
+    public async Task Listener_recovers_after_backend_termination_and_resumes_offer_updates()
+    {
+        if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
+
+        using var factory = new PortalNotificationApiFactory(TestConnectionString()!);
+        await factory.PrepareDatabaseAsync();
+
+        var userId = Guid.NewGuid();
+        using var client = factory.CreateAuthenticatedClient(userId);
+        await SeedOfferAsync(factory, userId, "Loc/RECONNECT-OFFER-1");
+
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var response = await client.SendAsync(
+            new HttpRequestMessage(HttpMethod.Get, "/api/events"),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellation.Token);
+        response.EnsureSuccessStatusCode();
+
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cancellation.Token));
+        await ReadEventAsync(reader, "ready", cancellation.Token);
+
+        await using (var admin = new NpgsqlConnection(TestConnectionString()!))
+        {
+            await admin.OpenAsync(cancellation.Token);
+            await using var terminate = admin.CreateCommand();
+            terminate.CommandText =
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'SalesPortalLiveListener' AND pid <> pg_backend_pid()";
+            await terminate.ExecuteNonQueryAsync(cancellation.Token);
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(2), cancellation.Token);
+        await using (var admin = new NpgsqlConnection(TestConnectionString()!))
+        {
+            await admin.OpenAsync(cancellation.Token);
+            await using var command = admin.CreateCommand();
+            command.CommandText =
+                "UPDATE offers SET reference = 'Loc/RECONNECT-OFFER-2' WHERE reference = 'Loc/RECONNECT-OFFER-1'";
+            await command.ExecuteNonQueryAsync(cancellation.Token);
+        }
+
+        var change = await ReadEventAsync(reader, "change", cancellation.Token);
+        Assert.Contains("\"offers\"", change);
+    }
+
+    [Fact]
+    public async Task Notification_persists_and_reaches_recipient_over_postgres()
+    {
+        if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
+
+        using var factory = new PortalNotificationApiFactory(TestConnectionString()!);
+        await factory.PrepareDatabaseAsync();
+
+        var actorId = Guid.NewGuid();
+        var recipientId = Guid.NewGuid();
+        using var actorClient = factory.CreateAuthenticatedClient(actorId);
+        using var recipientClient = factory.CreateAuthenticatedClient(recipientId);
+
+        var broadcaster = factory.Services.GetRequiredService<INotificationBroadcaster>();
+        using var subscription = broadcaster.Subscribe(recipientId);
+        var status = factory.Services.GetRequiredService<ILiveListenerStatus>();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        while (status.State != "connected" && !cancellation.IsCancellationRequested)
+        {
+            await Task.Delay(100, cancellation.Token);
+        }
+
+        Assert.Equal("connected", status.State);
+
+        var publisher = factory.Services.GetRequiredService<INotificationPublisher>();
+        await publisher.PublishAsync(
+            new NotificationEvent(
+                NotificationTypes.OfferCreated,
+                actorId,
+                "Test Actor",
+                "offer",
+                Guid.NewGuid(),
+                "Loc/INTEGRATION-2026/AA"),
+            cancellation.Token);
+
+        var delivered = await subscription.WaitAsync(cancellation.Token);
+        Assert.NotNull(delivered);
+        Assert.Equal(NotificationTypes.OfferCreated, delivered.Type);
+        Assert.Equal("Test Actor", delivered.ActorName);
+
+        await using var db = factory.CreateDbContext();
+        Assert.Single(db.Notifications.Where(row => row.RecipientUserId == recipientId));
+    }
+
+    [Fact]
+    public async Task Retention_predicate_removes_only_old_notifications()
+    {
+        if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
+
+        using var factory = new PortalNotificationApiFactory(TestConnectionString()!);
+        await factory.PrepareDatabaseAsync();
+
+        var recipientId = Guid.NewGuid();
+        using var client = factory.CreateAuthenticatedClient(recipientId);
+        var row = new sales_portal.domain.Models.Notification
+        {
+            Id = Guid.NewGuid(),
+            RecipientUserId = recipientId,
+            Type = NotificationTypes.OfferCreated,
+            ActorName = "Test Actor",
+            EntityType = "offer",
+            EntityLabel = "Old offer",
+            Meta = "{}",
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-61)
+        };
+
+        await using (var db = factory.CreateDbContext())
+        {
+            db.Notifications.Add(row);
+            db.Notifications.Add(new sales_portal.domain.Models.Notification
+            {
+                Id = Guid.NewGuid(),
+                RecipientUserId = recipientId,
+                Type = NotificationTypes.OfferCreated,
+                ActorName = "Test Actor",
+                EntityType = "offer",
+                EntityLabel = "Recent offer",
+                Meta = "{}",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+
+            var deleted = await db.Database.ExecuteSqlRawAsync("""
+                DELETE FROM notifications
+                WHERE id IN (
+                    SELECT id FROM notifications
+                    WHERE created_at < NOW() - INTERVAL '60 days'
+                    LIMIT 1000
+                    FOR UPDATE SKIP LOCKED
+                )
+                """);
+            Assert.Equal(1, deleted);
+            Assert.Single(db.Notifications.Where(item => item.RecipientUserId == recipientId));
+        }
+    }
+
+    private static async Task SeedOfferAsync(PortalNotificationApiFactory factory, Guid userId, string reference)
+    {
+        await using var context = factory.CreateDbContext();
+        var term = await context.PaymentTerms.FirstOrDefaultAsync();
+        if (term is null)
+        {
+            term = new sales_portal.domain.Models.PaymentTerm
+            {
+                Code = "integration-30",
+                Label = "30 days",
+                LabelAr = "٣٠ يومًا",
+                Days = 30
+            };
+            context.PaymentTerms.Add(term);
+            await context.SaveChangesAsync();
+        }
+
+        var customer = new sales_portal.domain.Models.Customer
+        {
+            Id = Guid.NewGuid(),
+            CustomerCode = $"CUST-{Guid.NewGuid():N}",
+            Name = "Integration customer",
+            Address = "Address",
+            DefaultCurrency = "EGP"
+        };
+        context.Customers.Add(customer);
+
+        var id = Guid.NewGuid();
+        context.Offers.Add(new sales_portal.domain.Models.Offer
+        {
+            Id = id,
+            Reference = reference,
+            SerialNumber = 1,
+            Version = 1,
+            RootOfferId = id,
+            CustomerId = customer.Id,
+            CreatedByUserId = userId,
+            IssueDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+            PaymentTermId = term.Id,
+            Currency = "EGP",
+            FormCode = "TF-06-01A",
+            Status = sales_portal.domain.Enums.OfferStatus.Draft,
+            SnapshotJson = "{}"
+        });
+        await context.SaveChangesAsync();
+    }
+
+    [Fact]
     public async Task Burst_of_direct_inserts_is_coalesced()
     {
         if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
@@ -272,6 +531,8 @@ public class PortalNotificationIntegrationTests
 
                 services.RemoveAll<IHostedService>();
                 services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
+                services.AddHostedService<sales_portal.api.Notifications.PortalEventNotificationService>();
+                services.AddHostedService<sales_portal.api.Notifications.NotificationPublishWorker>();
             });
         }
 

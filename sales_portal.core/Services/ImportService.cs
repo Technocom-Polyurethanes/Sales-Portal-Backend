@@ -6,6 +6,7 @@ using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 using sales_portal.core.Services.Import;
 using sales_portal.domain.Interfaces;
 using sales_portal.domain.Models;
@@ -16,6 +17,7 @@ public class ImportService : IImportService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private const int MaxRows = 5000;
+    private const int MaxNotificationLabel = 250;
 
     private readonly IRepository<ImportBatch> _batches;
     private readonly IRepository<Customer> _customers;
@@ -25,6 +27,8 @@ public class ImportService : IImportService
     private readonly IRepository<BankAccount> _bankAccounts;
     private readonly IReferenceDataCache _cache;
     private readonly IChangeBroadcaster _changes;
+    private readonly ICurrentActor? _actor;
+    private readonly INotificationPublisher? _publisher;
 
     public ImportService(
         IRepository<ImportBatch> batches,
@@ -34,7 +38,9 @@ public class ImportService : IImportService
         IRepository<User> users,
         IRepository<BankAccount> bankAccounts,
         IReferenceDataCache? cache = null,
-        IChangeBroadcaster? changes = null)
+        IChangeBroadcaster? changes = null,
+        INotificationPublisher? publisher = null,
+        ICurrentActor? actor = null)
     {
         _batches = batches;
         _customers = customers;
@@ -44,6 +50,8 @@ public class ImportService : IImportService
         _bankAccounts = bankAccounts;
         _cache = cache ?? NoReferenceDataCache.Instance;
         _changes = changes ?? NoChangeBroadcaster.Instance;
+        _actor = actor;
+        _publisher = publisher;
     }
 
     public Task<ImportTemplateDto> GetTemplateAsync(
@@ -227,6 +235,29 @@ public class ImportService : IImportService
         // A commit can change customers, materials, prices and bank accounts, so every list built from them is stale.
         _cache.Invalidate(CacheRegions.Customers, CacheRegions.Materials, CacheRegions.Catalog);
         _changes.Publish([ChangeTopics.Imports]);
+
+        // The import itself writes the rows, so no individual *.created event is emitted.
+        var actorId = _actor?.UserId ?? batch.CreatedByUserId;
+        var actorName = _actor?.UserId is not null
+            ? _actor!.DisplayName ?? string.Empty
+            : batch.CreatedByName ?? string.Empty;
+        if (actorId is { } userId)
+        {
+            var count = created + updated;
+            _publisher.PublishInBackground(NotificationEventFactory.Create(
+                userId,
+                actorName,
+                NotificationTypes.ImportCommitted,
+                "import",
+                null,
+                batch.FileName[..Math.Min(batch.FileName.Length, MaxNotificationLabel)],
+                new Dictionary<string, object?>
+                {
+                    ["customers"] = kind == ImportKind.Customers ? count : 0,
+                    ["materials"] = kind is ImportKind.Materials or ImportKind.Prices ? count : 0,
+                    ["banks"] = kind == ImportKind.BankAccounts ? count : 0
+                }));
+        }
 
         return ResultOf(batch);
     }

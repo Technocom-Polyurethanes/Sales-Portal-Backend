@@ -812,9 +812,11 @@ Body: `{ "newPassword": "..." }`. Returns `204`. Users change their own password
 
 ### `GET /api/events` (any signed-in user)
 
-A Server-Sent Events stream (`text/event-stream`) that tells a browser when data changed, so
-screens can load it again without a manual refresh. It carries **topic names only, never
-data**: what a user may see still goes through the normal, authorized endpoints.
+A Server-Sent Events stream (`text/event-stream`) that tells a browser when data changed or when
+the signed-in user has a new notification, so screens can load it again without a manual refresh.
+`change` events carry **topic names only, never data**; `notification` events carry only the stored
+DTO below (ids, labels, counts and status), never restricted entity data. Actual entity content
+still goes through the normal, authorized endpoints.
 
 Send the usual `Authorization: Bearer <token>` header. The browser `EventSource` cannot set
 headers, so use `fetch` and read the response body as a stream.
@@ -827,6 +829,9 @@ data: {}
 event: change
 data: {"topics":["offers","customers"]}
 
+event: notification
+data: {"id":"...","type":"offer.created","actorName":"Amgad Anwar","entityType":"offer","entityId":"...","entityLabel":"Loc/0042-2026/YL/AA","meta":{},"createdAt":"2026-11-26T12:00:00+00:00","readAt":null}
+
 : ping
 ```
 
@@ -834,6 +839,7 @@ data: {"topics":["offers","customers"]}
 | --- | --- |
 | `ready` | The stream is open and subscribed. Sent once, first. |
 | `change` | Something changed. `topics` lists what, see below. Changes that happen close together arrive as one event. |
+| `notification` | One new inbox row addressed to this signed-in user. Its `data` is the stored DTO below; it never contains another user's row or restricted entity data. |
 | `: ping` | A comment line every 20 seconds while idle, to keep proxies from closing the connection. |
 
 | Topic | Announced after a write to |
@@ -860,11 +866,50 @@ triggers on the live data tables send `pg_notify('portal_changes', <table name>)
 invalidates its reference-data cache first, then publishes the affected topics. The notification
 payload contains only the table name, never row data.
 
-Configure `ConnectionStrings:PortalNotifications` / `PORTAL_NOTIFICATIONS_CONNECTION_STRING` when
-the main connection goes through a transaction pooler, because `LISTEN` requires a direct session
-connection. It falls back to the normal database connection string. If the listener cannot connect,
-the API still starts and keeps the in-process publish path. After every (re)connect the server
-re-announces all mapped tables because notifications during a disconnect are lost.
+`ConnectionStrings:PortalNotifications` / `PORTAL_NOTIFICATIONS_CONNECTION_STRING` overrides the
+connection used for live updates; it otherwise falls back to the normal database connection. Set it
+only when the host offers a direct/session-mode connection. Transaction poolers such as MonsterASP's
+PgBouncer do not support `LISTEN`, so the API also polls `pg_stat_all_tables` row counters every
+second and announces tables whose counters changed. In-process publishes and the poll fallback keep
+live updates working on poolers; `LISTEN` remains the low-latency path where it is available. After
+every listener (re)connect the server re-announces all mapped tables because notifications during a
+disconnect are lost.
+
+### Notifications
+
+The notification inbox is server-scoped: recipients are chosen from the audience matrix on the
+server, the acting user never receives a notice about their own write, and every row belongs to
+exactly one recipient. Delivery is SSE only — there is no email, SMS, push or user preference
+endpoint. A notification failure never fails the write that triggered it. Notifications are
+announced locally and through `pg_notify('portal_events', ...)` on every publish, so another API
+instance can deliver them; each instance deduplicates by row id. Rows older than 60 days are
+deleted by a daily cleanup job.
+
+`GET /api/events` carries one `event: notification` frame per new row. The payload is the same
+DTO returned by the inbox: `id`, `type`, `actorName`, `entityType`, `entityId`, `entityLabel`,
+`meta`, `createdAt` and `readAt`. `entityId`/`entityLabel`/`meta` identify the subject only; the
+browser still loads the actual entity through its authorized endpoint. Supported types are
+`offer.created`, `offer.revised`, `offer.status_changed`, `offer.deleted`, `customer.created`,
+`customer.deleted`, `material.created`, `material.deleted`, `bank.created`, `bank.deleted`,
+`import.committed`, `user.created`, `user.deactivated` and `user.role_changed`. An import emits one
+`import.committed` notice per eligible active user except the committer (admins, sales and
+accountants), not one per row.
+
+| Endpoint | Result |
+| --- | --- |
+| `GET /api/notifications?page=1&pageSize=20&unreadOnly=false` | The signed-in user's inbox with `items`, `totalCount`, `unreadCount`, `page` and `pageSize`. `page` and `pageSize` are bounded; an overflowing page is empty rather than an error. |
+| `GET /api/notifications/unread-count` | `{ "unreadCount": n }` for the signed-in user only. |
+| `POST /api/notifications/{id}/read` | `204`. Returns `404` when the id is missing or belongs to another user, so ids cannot probe another inbox. |
+| `POST /api/notifications/read-all` | `204`; marks only the signed-in user's rows read. |
+
+The browser reads the inbox on load and on every `ready` frame (reconnect), deduplicates by id, and
+shows the count from the same page snapshot as its rows. Deactivation, role change or deletion
+closes that user's SSE subscription; streams also recheck eligibility on each heartbeat and before
+writing a frame.
+
+`GET /health` is anonymous and returns `liveListener` as `connected` or `disconnected` alongside
+`status` and `database`. The field is a health signal only: local notification delivery and
+in-process live updates still work when no dedicated `LISTEN` connection is available.
 
 ## Additive contract summary
 
