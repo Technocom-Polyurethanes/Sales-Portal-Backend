@@ -17,6 +17,7 @@ public class ImportService : IImportService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private const int MaxRows = 5000;
+    private const int MaxNotificationLabel = 250;
 
     private readonly IRepository<ImportBatch> _batches;
     private readonly IRepository<Customer> _customers;
@@ -26,6 +27,7 @@ public class ImportService : IImportService
     private readonly IRepository<BankAccount> _bankAccounts;
     private readonly IReferenceDataCache _cache;
     private readonly IChangeBroadcaster _changes;
+    private readonly ICurrentActor? _actor;
     private readonly INotificationPublisher? _publisher;
 
     public ImportService(
@@ -37,7 +39,8 @@ public class ImportService : IImportService
         IRepository<BankAccount> bankAccounts,
         IReferenceDataCache? cache = null,
         IChangeBroadcaster? changes = null,
-        INotificationPublisher? publisher = null)
+        INotificationPublisher? publisher = null,
+        ICurrentActor? actor = null)
     {
         _batches = batches;
         _customers = customers;
@@ -47,6 +50,7 @@ public class ImportService : IImportService
         _bankAccounts = bankAccounts;
         _cache = cache ?? NoReferenceDataCache.Instance;
         _changes = changes ?? NoChangeBroadcaster.Instance;
+        _actor = actor;
         _publisher = publisher;
     }
 
@@ -233,16 +237,20 @@ public class ImportService : IImportService
         _changes.Publish([ChangeTopics.Imports]);
 
         // The import itself writes the rows, so no individual *.created event is emitted.
-        if (batch.CreatedByUserId is { } userId)
+        var actorId = _actor?.UserId ?? batch.CreatedByUserId;
+        var actorName = _actor?.UserId is not null
+            ? _actor!.DisplayName ?? string.Empty
+            : batch.CreatedByName ?? string.Empty;
+        if (actorId is { } userId)
         {
             var count = created + updated;
             _publisher.PublishInBackground(NotificationEventFactory.Create(
                 userId,
-                batch.CreatedByName ?? string.Empty,
+                actorName,
                 NotificationTypes.ImportCommitted,
                 "import",
                 null,
-                batch.FileName,
+                batch.FileName[..Math.Min(batch.FileName.Length, MaxNotificationLabel)],
                 new Dictionary<string, object?>
                 {
                     ["customers"] = kind == ImportKind.Customers ? count : 0,

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using sales_portal.core.Caching;
+using sales_portal.core.Notifications;
 using sales_portal.core.Services;
 using sales_portal.domain.Enums;
 using sales_portal.domain.Models;
@@ -66,14 +67,19 @@ internal static class TestFactory
         IReferenceDataCache? cache = null)
         => new(new Repository<BankAccount>(context), cache);
 
-    public static ImportService CreateImportService(AppDbContext context)
+    public static ImportService CreateImportService(
+        AppDbContext context,
+        INotificationPublisher? publisher = null,
+        ICurrentActor? actor = null)
         => new(
             new Repository<ImportBatch>(context),
             new Repository<Customer>(context),
             new Repository<Material>(context),
             new Repository<PaymentTerm>(context),
             new Repository<User>(context),
-            new Repository<BankAccount>(context));
+            new Repository<BankAccount>(context),
+            publisher: publisher,
+            actor: actor);
 
     public static SettingsService CreateSettingsService(AppDbContext context)
         => new(
