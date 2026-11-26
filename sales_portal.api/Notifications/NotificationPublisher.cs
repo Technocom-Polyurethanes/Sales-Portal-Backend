@@ -22,20 +22,17 @@ public sealed class NotificationPublisher : INotificationPublisher
 
     private readonly IServiceScopeFactory _scopes;
     private readonly INotificationBroadcaster _broadcaster;
-    private readonly ILiveListenerStatus _listeners;
     private readonly string? _connectionString;
     private readonly ILogger<NotificationPublisher> _logger;
 
     public NotificationPublisher(
         IServiceScopeFactory scopes,
         INotificationBroadcaster broadcaster,
-        ILiveListenerStatus listeners,
         IConfiguration configuration,
         ILogger<NotificationPublisher> logger)
     {
         _scopes = scopes;
         _broadcaster = broadcaster;
-        _listeners = listeners;
         _connectionString = PostgresNotificationListener.ResolveConnectionString(configuration);
         _logger = logger;
     }
@@ -109,11 +106,10 @@ public sealed class NotificationPublisher : INotificationPublisher
         NotificationEventPayload payload,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_connectionString) || _listeners.State != "connected")
-        {
-            _broadcaster.Publish(payload);
-            return;
-        }
+        // Deliver locally even when pg_notify is available: the broadcaster dedupes by row id, so
+        // a healthy listener cannot produce a second toast and a broken one cannot lose this instance.
+        _broadcaster.Publish(payload);
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
 
         var recipients = payload.Recipients;
         for (var offset = 0; offset < recipients.Count; offset += RecipientsPerNotice)

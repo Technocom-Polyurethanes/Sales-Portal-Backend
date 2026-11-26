@@ -3,7 +3,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using sales_portal.api.Live;
 using sales_portal.api.Notifications;
 using sales_portal.core.Notifications;
 using sales_portal.domain.Enums;
@@ -133,7 +132,6 @@ public class NotificationUnitTests
         var publisher = new NotificationPublisher(
             provider.GetRequiredService<IServiceScopeFactory>(),
             broadcaster,
-            new FixedListenerStatus(),
             new ConfigurationBuilder().Build(),
             logger);
 
@@ -168,7 +166,6 @@ public class NotificationUnitTests
         var publisher = new NotificationPublisher(
             new ThrowingScopeFactory(),
             new NotificationBroadcaster(),
-            new FixedListenerStatus(),
             new ConfigurationBuilder().Build(),
             NullLogger<NotificationPublisher>.Instance);
 
@@ -201,15 +198,6 @@ public class NotificationUnitTests
         EntityLabel = "Loc/0001-2026/AA",
         CreatedAt = DateTimeOffset.UtcNow
     };
-
-    private sealed class FixedListenerStatus : ILiveListenerStatus
-    {
-        public string State => "disconnected";
-
-        public void Update(string listener, bool connected)
-        {
-        }
-    }
 
     private sealed class CapturingLogger : ILogger<NotificationPublisher>
     {
