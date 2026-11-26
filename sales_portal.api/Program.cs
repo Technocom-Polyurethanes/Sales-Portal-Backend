@@ -8,10 +8,12 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using sales_portal.api.Authorization;
 using sales_portal.api.Middleware;
+using sales_portal.api.Notifications;
 using sales_portal.core.Caching;
 using sales_portal.core.Configuration;
 using sales_portal.core.IService;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 using sales_portal.core.Services;
 using sales_portal.domain.Interfaces;
 using sales_portal.infrastructure;
@@ -85,6 +87,10 @@ builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
 builder.Services.AddSingleton<sales_portal.api.Live.ILiveListenerStatus, sales_portal.api.Live.LiveListenerStatus>();
 builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
 builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationRetentionService>();
+
+// The actor behind a write; absent outside an authenticated HTTP request.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentActor, CurrentActor>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
