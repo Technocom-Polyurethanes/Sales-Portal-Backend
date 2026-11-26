@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 
 namespace sales_portal.api.Controllers;
 
@@ -27,10 +28,12 @@ public class EventsController : ControllerBase
     private static readonly TimeSpan MaxConnectionLifetime = TimeSpan.FromMinutes(30);
 
     private readonly IChangeBroadcaster _changes;
+    private readonly INotificationBroadcaster _notifications;
 
-    public EventsController(IChangeBroadcaster changes)
+    public EventsController(IChangeBroadcaster changes, INotificationBroadcaster notifications)
     {
         _changes = changes;
+        _notifications = notifications;
     }
 
     [HttpGet]
@@ -53,8 +56,15 @@ public class EventsController : ControllerBase
             }
         }
 
+        if (CurrentUserId() is not Guid userId)
+        {
+            Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+
         // Subscribe first: a change made while the first bytes are being sent is then not missed.
         using var subscription = _changes.Subscribe();
+        using var notificationSubscription = _notifications.Subscribe(userId);
 
         try
         {
@@ -70,16 +80,58 @@ public class EventsController : ControllerBase
                 }
 
                 var wait = remaining < HeartbeatInterval ? remaining : HeartbeatInterval;
-                var topics = await subscription.WaitAsync(wait, cancellationToken);
+                using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                waitCts.CancelAfter(wait);
 
-                if (topics.Count == 0)
+                var changeTask = subscription.WaitAsync(wait, waitCts.Token);
+                var notificationTask = notificationSubscription.WaitAsync(waitCts.Token);
+                await Task.WhenAny(changeTask, notificationTask);
+                waitCts.Cancel();
+
+                IReadOnlyCollection<string> topics = Array.Empty<string>();
+                NotificationDto? notification = null;
+                try
                 {
-                    await WriteAsync(": ping\n\n", cancellationToken);
-                    continue;
+                    topics = await changeTask;
+                }
+                catch (OperationCanceledException)
+                    when (waitCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    // Nothing changed before the heartbeat or the other event won the wait.
                 }
 
-                var data = JsonSerializer.Serialize(new { topics });
-                await WriteAsync($"event: change\ndata: {data}\n\n", cancellationToken);
+                try
+                {
+                    notification = await notificationTask;
+                }
+                catch (OperationCanceledException)
+                    when (waitCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    // Nothing arrived before the heartbeat or the other event won the wait.
+                }
+
+                // The server closed this user's stream after deactivation or a role change.
+                if (notification is null && notificationTask.IsCompletedSuccessfully)
+                {
+                    break;
+                }
+
+                if (topics.Count > 0)
+                {
+                    var data = JsonSerializer.Serialize(new { topics });
+                    await WriteAsync($"event: change\ndata: {data}\n\n", cancellationToken);
+                }
+
+                if (notification is not null)
+                {
+                    var data = JsonSerializer.Serialize(notification, NotificationJson.Options);
+                    await WriteAsync($"event: notification\ndata: {data}\n\n", cancellationToken);
+                }
+
+                if (topics.Count == 0 && notification is null)
+                {
+                    await WriteAsync(": ping\n\n", cancellationToken);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -90,6 +142,12 @@ public class EventsController : ControllerBase
         {
             // Same, reported by the transport as a failed write.
         }
+    }
+
+    private Guid? CurrentUserId()
+    {
+        var rawId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(rawId, out var id) ? id : null;
     }
 
     private async Task WriteAsync(string text, CancellationToken cancellationToken)
