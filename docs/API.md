@@ -812,9 +812,11 @@ Body: `{ "newPassword": "..." }`. Returns `204`. Users change their own password
 
 ### `GET /api/events` (any signed-in user)
 
-A Server-Sent Events stream (`text/event-stream`) that tells a browser when data changed, so
-screens can load it again without a manual refresh. It carries **topic names only, never
-data**: what a user may see still goes through the normal, authorized endpoints.
+A Server-Sent Events stream (`text/event-stream`) that tells a browser when data changed or when
+the signed-in user has a new notification, so screens can load it again without a manual refresh.
+`change` events carry **topic names only, never data**; `notification` events carry only the stored
+DTO below (ids, labels, counts and status), never restricted entity data. Actual entity content
+still goes through the normal, authorized endpoints.
 
 Send the usual `Authorization: Bearer <token>` header. The browser `EventSource` cannot set
 headers, so use `fetch` and read the response body as a stream.
@@ -890,7 +892,8 @@ browser still loads the actual entity through its authorized endpoint. Supported
 `offer.created`, `offer.revised`, `offer.status_changed`, `offer.deleted`, `customer.created`,
 `customer.deleted`, `material.created`, `material.deleted`, `bank.created`, `bank.deleted`,
 `import.committed`, `user.created`, `user.deactivated` and `user.role_changed`. An import emits one
-`import.committed` notice for the committer and the admins, not one per row.
+`import.committed` notice per eligible active user except the committer (admins, sales and
+accountants), not one per row.
 
 | Endpoint | Result |
 | --- | --- |
