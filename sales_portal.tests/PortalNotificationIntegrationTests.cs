@@ -10,8 +10,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
+using sales_portal.api.Live;
 using sales_portal.core.Caching;
 using sales_portal.core.Live;
+using sales_portal.core.Notifications;
 using sales_portal.infrastructure.Contexts;
 using Xunit;
 
@@ -266,6 +268,102 @@ public class PortalNotificationIntegrationTests
         Assert.Contains("\"offers\"", change);
     }
 
+    [Fact]
+    public async Task Notification_persists_and_reaches_recipient_over_postgres()
+    {
+        if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
+
+        using var factory = new PortalNotificationApiFactory(TestConnectionString()!);
+        await factory.PrepareDatabaseAsync();
+
+        var actorId = Guid.NewGuid();
+        var recipientId = Guid.NewGuid();
+        using var actorClient = factory.CreateAuthenticatedClient(actorId);
+        using var recipientClient = factory.CreateAuthenticatedClient(recipientId);
+
+        var broadcaster = factory.Services.GetRequiredService<INotificationBroadcaster>();
+        using var subscription = broadcaster.Subscribe(recipientId);
+        var status = factory.Services.GetRequiredService<ILiveListenerStatus>();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        while (status.State != "connected" && !cancellation.IsCancellationRequested)
+        {
+            await Task.Delay(100, cancellation.Token);
+        }
+
+        Assert.Equal("connected", status.State);
+
+        var publisher = factory.Services.GetRequiredService<INotificationPublisher>();
+        await publisher.PublishAsync(
+            new NotificationEvent(
+                NotificationTypes.OfferCreated,
+                actorId,
+                "Test Actor",
+                "offer",
+                Guid.NewGuid(),
+                "Loc/INTEGRATION-2026/AA"),
+            cancellation.Token);
+
+        var delivered = await subscription.WaitAsync(cancellation.Token);
+        Assert.NotNull(delivered);
+        Assert.Equal(NotificationTypes.OfferCreated, delivered.Type);
+        Assert.Equal("Test Actor", delivered.ActorName);
+
+        await using var db = factory.CreateDbContext();
+        Assert.Single(db.Notifications.Where(row => row.RecipientUserId == recipientId));
+    }
+
+    [Fact]
+    public async Task Retention_predicate_removes_only_old_notifications()
+    {
+        if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
+
+        using var factory = new PortalNotificationApiFactory(TestConnectionString()!);
+        await factory.PrepareDatabaseAsync();
+
+        var recipientId = Guid.NewGuid();
+        using var client = factory.CreateAuthenticatedClient(recipientId);
+        var row = new sales_portal.domain.Models.Notification
+        {
+            Id = Guid.NewGuid(),
+            RecipientUserId = recipientId,
+            Type = NotificationTypes.OfferCreated,
+            ActorName = "Test Actor",
+            EntityType = "offer",
+            EntityLabel = "Old offer",
+            Meta = "{}",
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-61)
+        };
+
+        await using (var db = factory.CreateDbContext())
+        {
+            db.Notifications.Add(row);
+            db.Notifications.Add(new sales_portal.domain.Models.Notification
+            {
+                Id = Guid.NewGuid(),
+                RecipientUserId = recipientId,
+                Type = NotificationTypes.OfferCreated,
+                ActorName = "Test Actor",
+                EntityType = "offer",
+                EntityLabel = "Recent offer",
+                Meta = "{}",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+
+            var deleted = await db.Database.ExecuteSqlRawAsync("""
+                DELETE FROM notifications
+                WHERE id IN (
+                    SELECT id FROM notifications
+                    WHERE created_at < NOW() - INTERVAL '60 days'
+                    LIMIT 1000
+                    FOR UPDATE SKIP LOCKED
+                )
+                """);
+            Assert.Equal(1, deleted);
+            Assert.Single(db.Notifications.Where(item => item.RecipientUserId == recipientId));
+        }
+    }
+
     private static async Task SeedOfferAsync(PortalNotificationApiFactory factory, Guid userId, string reference)
     {
         await using var context = factory.CreateDbContext();
@@ -433,6 +531,7 @@ public class PortalNotificationIntegrationTests
 
                 services.RemoveAll<IHostedService>();
                 services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
+                services.AddHostedService<sales_portal.api.Notifications.PortalEventNotificationService>();
             });
         }
 
