@@ -83,7 +83,6 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IChangeBroadcaster, ChangeBroadcaster>();
 builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
 builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
-builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
