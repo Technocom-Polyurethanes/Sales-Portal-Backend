@@ -88,6 +88,7 @@ builder.Services.AddSingleton<INotificationBroadcaster, NotificationBroadcaster>
 builder.Services.AddSingleton<INotificationPublisher, NotificationPublisher>();
 builder.Services.AddSingleton<sales_portal.api.Live.ILiveListenerStatus, sales_portal.api.Live.LiveListenerStatus>();
 builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotificationService>();
+builder.Services.AddHostedService<sales_portal.api.Notifications.PortalEventNotificationService>();
 builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationRetentionService>();
 
 // The actor behind a write; absent outside an authenticated HTTP request.
