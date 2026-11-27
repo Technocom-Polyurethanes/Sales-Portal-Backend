@@ -24,6 +24,7 @@ public interface INotificationSubscription : IDisposable
 public sealed class NotificationBroadcaster : INotificationBroadcaster
 {
     private const int DedupeLimit = 100;
+    private const int QueueLimit = 100;
 
     private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Subscription, byte>> _users = new();
 
@@ -74,10 +75,11 @@ public sealed class NotificationBroadcaster : INotificationBroadcaster
         private readonly Queue<Guid> _recent = new();
         private readonly HashSet<Guid> _seen = new();
         private readonly Channel<NotificationDto> _channel =
-            Channel.CreateUnbounded<NotificationDto>(new UnboundedChannelOptions
+            Channel.CreateBounded<NotificationDto>(new BoundedChannelOptions(QueueLimit)
             {
                 SingleReader = true,
-                SingleWriter = false
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.DropOldest
             });
 
         public Subscription(NotificationBroadcaster owner, Guid userId)
