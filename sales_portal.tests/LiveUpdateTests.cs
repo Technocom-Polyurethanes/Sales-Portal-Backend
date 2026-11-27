@@ -34,6 +34,7 @@ public class LiveUpdateTests
         status.Update("notifications", true);
 
         Assert.Equal("disabled", status.State);
+        Assert.True(status.Disabled);
         Assert.True(status.IsConnected("changes"));
     }
 

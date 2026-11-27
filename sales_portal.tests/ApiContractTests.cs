@@ -71,7 +71,7 @@ public class ApiContractTests : IClassFixture<SalesPortalApiFactory>
     }
 }
 
-public sealed class SalesPortalApiFactory : WebApplicationFactory<Program>
+public class SalesPortalApiFactory : WebApplicationFactory<Program>
 {
     private const string JwtSecret = "test-only-secret-change-me-0123456789abcdef";
     private const string JwtIssuer = "SalesPortalAPI";
