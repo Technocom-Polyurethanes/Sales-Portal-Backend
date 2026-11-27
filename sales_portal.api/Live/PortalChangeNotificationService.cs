@@ -43,6 +43,7 @@ public sealed class PortalChangeNotificationService : BackgroundService
         var connectionString = PostgresNotificationListener.ResolveConnectionString(_configuration);
         if (string.IsNullOrWhiteSpace(connectionString))
         {
+            _status.Disable();
             _logger.LogWarning("Postgres live updates are disabled: no notification connection string is configured.");
             return;
         }

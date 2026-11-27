@@ -24,6 +24,20 @@ public class LiveUpdateTests
         => topics.OrderBy(topic => topic, StringComparer.Ordinal).ToArray();
 
     [Fact]
+    public void Health_reports_disabled_when_no_listener_connection_is_configured()
+    {
+        var status = new LiveListenerStatus();
+        Assert.Equal("disconnected", status.State);
+
+        status.Disable();
+        status.Update("changes", true);
+        status.Update("notifications", true);
+
+        Assert.Equal("disabled", status.State);
+        Assert.True(status.IsConnected("changes"));
+    }
+
+    [Fact]
     public void Cache_regions_map_to_the_topics_a_browser_listens_for()
     {
         Assert.Equal(new[] { "customers" }, Sorted(ChangeTopics.ForRegions(new[] { CacheRegions.Customers })));

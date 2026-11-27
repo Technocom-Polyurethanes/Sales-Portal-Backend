@@ -9,19 +9,26 @@ public interface ILiveListenerStatus
 
     bool IsConnected(string listener);
 
+    void Disable();
+
     void Update(string listener, bool connected);
 }
 
 public sealed class LiveListenerStatus : ILiveListenerStatus
 {
     private readonly ConcurrentDictionary<string, bool> _listeners = new(StringComparer.Ordinal);
+    private volatile bool _disabled;
 
-    public string State => _listeners.IsEmpty || _listeners.Values.Any(connected => !connected)
-        ? "disconnected"
-        : "connected";
+    public string State => _disabled
+        ? "disabled"
+        : _listeners.IsEmpty || _listeners.Values.Any(connected => !connected)
+            ? "disconnected"
+            : "connected";
 
     public bool IsConnected(string listener) =>
         _listeners.TryGetValue(listener, out var connected) && connected;
+
+    public void Disable() => _disabled = true;
 
     public void Update(string listener, bool connected) => _listeners[listener] = connected;
 }

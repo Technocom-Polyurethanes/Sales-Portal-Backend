@@ -36,6 +36,7 @@ public sealed class PortalEventNotificationService : BackgroundService
         var connectionString = PostgresNotificationListener.ResolveConnectionString(_configuration);
         if (string.IsNullOrWhiteSpace(connectionString))
         {
+            _status.Disable();
             _logger.LogWarning("Notification events are disabled: no notification connection string is configured.");
             return;
         }
