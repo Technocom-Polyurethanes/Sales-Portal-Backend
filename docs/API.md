@@ -40,6 +40,7 @@ or deleted user returns `401`. A role the user lacks returns `403` ProblemDetail
 | Company settings (`PUT /api/settings`) | yes | no | no |
 | Users (`/api/users`) | yes | no | no |
 | System status (`/api/system/status`) | yes | no | no |
+| Audit log (`/api/audit-logs`) | yes | no | no |
 
 The matrix lives in one file, `sales_portal.api/Authorization/Policies.cs`.
 
@@ -852,6 +853,7 @@ data: {"id":"...","type":"offer.created","actorName":"Amgad Anwar","entityType":
 | `offers` | offers, their lines, packaging and delivery batches |
 | `users` | users |
 | `imports` | a committed import |
+| `audit` | an audit row written or removed by retention |
 
 An event is sent only after the write is saved (and its transaction committed), and after the
 server's own reference-data cache has been cleared, so reloading straight away returns the new
@@ -918,6 +920,28 @@ listener is down), and the individual `changes` and `notifications` listener sta
 or disabled listener makes the overall status `Degraded`; a database that cannot be reached makes it
 `Unhealthy`. The endpoint
 never starts a listener, changes configuration or returns secrets.
+### Audit log (Admin)
+
+Every mutating signed-in request, login attempt, password change failure and offer document open
+writes one append-only row. Reads, import previews, notification read state and `/api/audit-logs`
+itself are not audited. Rows snapshot the actor (`actorUserId`, `actorUsername`, `actorFullName`,
+`actorRole`) plus `action`, `category`, `entityType`, `entityId`, `entityLabel`, `description`,
+`outcome` (`success`/`failure`), `httpMethod`, `path`, `statusCode`, `ipAddress`, `details` and
+`occurredAt`. Passwords, hashes, tokens, request bodies and authorization headers are never stored;
+`details` only holds a small sanitized dictionary of non-secret values. The IP is the socket address
+reported by ASP.NET Core; no forwarded-header middleware is configured. Rows are written by a
+background worker from a bounded queue, so a full queue drops new rows instead of failing the
+request. A failed write batch is retried up to three times and the queue is flushed on shutdown.
+A daily retention job deletes rows older than `Audit:RetentionDays` (default `365`; set to `0` to
+keep everything).
+
+| Endpoint | Result |
+| --- | --- |
+| `GET /api/audit-logs` | Newest first. Filters: `from`, `to`, `actorId`, `category`, `action`, `entityType`, `outcome`, `search`, `page` (default `1`), `pageSize` (default `50`, max `200`). Returns `items`, `page`, `pageSize` and `totalCount`. |
+| `GET /api/audit-logs/filters` | `{ "actors": [{ "id", "username", "fullName" }], "categories": [...], "actions": [...] }` for building the filter controls. |
+
+`GET /api/events` carries an `audit` change topic when a row is written or deleted. Descriptions are
+written in English on the server; clients localize by `action` and fall back to the stored text.
 
 `GET /health` is anonymous and returns `liveListener` as `connected`, `disconnected` or
 `disabled` alongside `status` and `database`. `disabled` means no notification connection string

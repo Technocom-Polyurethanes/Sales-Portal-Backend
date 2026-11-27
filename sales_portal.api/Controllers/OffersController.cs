@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -21,6 +22,7 @@ public class OffersController : ControllerBase
         _offerService = offerService;
     }
 
+    [NoAudit("Pure calculation; no state changes.")]
     [HttpPost("calculate")]
     [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferCalculateResponseDto>> Calculate(
@@ -75,6 +77,7 @@ public class OffersController : ControllerBase
         return offer == null ? NotFound() : Ok(offer);
     }
 
+    [Audit(AuditActions.OfferDocumentOpened)]
     [HttpGet("{id:guid}/document")]
     public async Task<ActionResult<OfferDocumentDto>> GetDocument(
         Guid id,
@@ -84,6 +87,7 @@ public class OffersController : ControllerBase
         return document == null ? NotFound() : Ok(document);
     }
 
+    [Audit(AuditActions.OfferCreated)]
     [HttpPost]
     [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> CreateOffer(
@@ -100,6 +104,7 @@ public class OffersController : ControllerBase
         return CreatedAtAction(nameof(GetOffer), new { id = offer.Id }, offer);
     }
 
+    [Audit(AuditActions.OfferUpdated)]
     [HttpPut("{id:guid}")]
     [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> UpdateOffer(
@@ -116,6 +121,7 @@ public class OffersController : ControllerBase
         return Ok(await _offerService.UpdateAsync(id, request, userId.Value, cancellationToken));
     }
 
+    [Audit(AuditActions.OfferRevised)]
     [HttpPost("{id:guid}/revise")]
     [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> ReviseOffer(
@@ -132,6 +138,7 @@ public class OffersController : ControllerBase
         return CreatedAtAction(nameof(GetOffer), new { id = offer.Id }, offer);
     }
 
+    [Audit(AuditActions.OfferStatusChanged)]
     [HttpPatch("{id:guid}/status")]
     [Authorize(Policy = Policies.OffersWrite)]
     public async Task<ActionResult<OfferDetailDto>> UpdateStatus(
@@ -148,6 +155,7 @@ public class OffersController : ControllerBase
         return Ok(await _offerService.UpdateStatusAsync(id, request, userId.Value, cancellationToken));
     }
 
+    [Audit(AuditActions.OfferDeleted)]
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = Policies.OffersDelete)]
     public async Task<IActionResult> DeleteOffer(

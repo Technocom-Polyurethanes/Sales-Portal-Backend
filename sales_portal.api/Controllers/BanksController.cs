@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -45,6 +46,7 @@ public class BanksController : ControllerBase
         return account == null ? NotFound() : Ok(account);
     }
 
+    [Audit(AuditActions.BankCreated)]
     [HttpPost]
     [Authorize(Policy = Policies.CatalogCreate)]
     public async Task<ActionResult<BankAccountDto>> CreateBank(
@@ -55,6 +57,7 @@ public class BanksController : ControllerBase
         return CreatedAtAction(nameof(GetBank), new { id = account.Id }, account);
     }
 
+    [Audit(AuditActions.BankUpdated)]
     [HttpPut("{id:guid}")]
     [Authorize(Policy = Policies.CatalogEdit)]
     public async Task<ActionResult<BankAccountDto>> UpdateBank(
@@ -66,6 +69,7 @@ public class BanksController : ControllerBase
         return account == null ? NotFound() : Ok(account);
     }
 
+    [Audit(AuditActions.BankDeleted)]
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = Policies.CatalogDelete)]
     public async Task<IActionResult> DeleteBank(
