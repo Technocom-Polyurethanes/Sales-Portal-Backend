@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 using sales_portal.domain.Enums;
@@ -41,6 +42,7 @@ public class UsersController : ControllerBase
         return user == null ? NotFound() : Ok(user);
     }
 
+    [Audit(AuditActions.UserCreated)]
     [HttpPost]
     public async Task<ActionResult<UserDto>> CreateUser(
         [FromBody] CreateUserDto request,
@@ -50,6 +52,7 @@ public class UsersController : ControllerBase
         return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
     }
 
+    [Audit(AuditActions.UserUpdated)]
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<UserDto>> UpdateUser(
         Guid id,
@@ -62,6 +65,7 @@ public class UsersController : ControllerBase
         return Ok(await _userService.UpdateAsync(id, request, actingUserId, cancellationToken));
     }
 
+    [Audit(AuditActions.UserPasswordReset)]
     [HttpPost("{id:guid}/reset-password")]
     public async Task<IActionResult> ResetPassword(
         Guid id,
@@ -72,6 +76,7 @@ public class UsersController : ControllerBase
         return NoContent();
     }
 
+    [Audit(AuditActions.UserDeleted)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteUser(
         Guid id,

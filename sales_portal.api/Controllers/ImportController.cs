@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.Exceptions;
 using sales_portal.core.IService;
@@ -29,6 +30,7 @@ public class ImportController : ControllerBase
         return File(template.Content, template.ContentType, template.FileName);
     }
 
+    [NoAudit("Preview computes a diff and stores nothing.")]
     [HttpPost("{type}/preview")]
     [RequestSizeLimit(6_000_000)]
     public async Task<ActionResult<ImportPreviewDto>> Preview(
@@ -51,6 +53,7 @@ public class ImportController : ControllerBase
             cancellationToken));
     }
 
+    [Audit(AuditActions.ImportCommitted)]
     [HttpPost("{importId:guid}/commit")]
     public async Task<ActionResult<ImportCommitResultDto>> Commit(
         Guid importId,

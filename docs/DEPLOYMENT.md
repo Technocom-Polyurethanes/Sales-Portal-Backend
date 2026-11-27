@@ -48,6 +48,7 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 | `BOOTSTRAP_ADMIN_FULL_NAME` | (Optional, first-login only) Full name of the admin. |
 | `BOOTSTRAP_ADMIN_INITIALS` | (Optional, first-login only) Initials (used in offer references). |
 | `BOOTSTRAP_ADMIN_EMAIL` | (Optional, first-login only) Email of the admin. |
+| `Audit__RetentionDays` | Days of audit history kept by the daily cleanup job; default `365`. Set to `0` to keep all rows. |
 
 > **To verify:** The MonsterASP help pages (help.monsterasp.net) confirm Web Deploy on port 8172 and the environment variable mechanism. The availability of PostgreSQL depends on the specific hosting plan — **confirm with MonsterASP support that your plan includes PostgreSQL**.
 

@@ -24,6 +24,9 @@ public static class ChangeTopics
     /// <summary>The log of committed imports.</summary>
     public const string Imports = "imports";
 
+    /// <summary>The admin audit log.</summary>
+    public const string Audit = "audit";
+
     /// <summary>The tables whose direct database writes are announced to browsers.</summary>
     public static IReadOnlyCollection<string> MappedTables { get; } =
     [
@@ -40,7 +43,8 @@ public static class ChangeTopics
         "offer_line_packagings",
         "offer_delivery_batches",
         "offer_delivery_allocations",
-        "import_batches"
+        "import_batches",
+        "audit_logs"
     ];
 
     private static readonly IReadOnlyDictionary<string, (string[] Regions, string[] Topics)> TableMap =
@@ -59,7 +63,8 @@ public static class ChangeTopics
             ["offer_line_packagings"] = Map([CacheRegions.Offers]),
             ["offer_delivery_batches"] = Map([CacheRegions.Offers]),
             ["offer_delivery_allocations"] = Map([CacheRegions.Offers]),
-            ["import_batches"] = Map([], Imports)
+            ["import_batches"] = Map([], Imports),
+            ["audit_logs"] = Map([], Audit)
         };
 
     /// <summary>

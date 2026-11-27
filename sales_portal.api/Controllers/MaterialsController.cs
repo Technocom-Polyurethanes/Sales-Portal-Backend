@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -62,6 +63,7 @@ public class MaterialsController : ControllerBase
         return material == null ? NotFound() : Ok(material);
     }
 
+    [Audit(AuditActions.MaterialCreated)]
     [HttpPost]
     [Authorize(Policy = Policies.CatalogCreate)]
     public async Task<ActionResult<MaterialDto>> CreateMaterial(
@@ -72,6 +74,7 @@ public class MaterialsController : ControllerBase
         return CreatedAtAction(nameof(GetMaterial), new { id = material.Id }, material);
     }
 
+    [Audit(AuditActions.MaterialUpdated)]
     [HttpPut("{id:guid}")]
     [Authorize(Policy = Policies.CatalogEdit)]
     public async Task<ActionResult<MaterialDto>> UpdateMaterial(
@@ -83,6 +86,7 @@ public class MaterialsController : ControllerBase
         return material == null ? NotFound() : Ok(material);
     }
 
+    [Audit(AuditActions.MaterialDeleted)]
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = Policies.CatalogDelete)]
     public async Task<IActionResult> DeleteMaterial(
