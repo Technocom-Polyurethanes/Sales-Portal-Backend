@@ -6,10 +6,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using sales_portal.api.Audit;
 using sales_portal.api.Authorization;
 using sales_portal.api.Middleware;
 using sales_portal.api.Notifications;
 using sales_portal.core.Caching;
+using sales_portal.core.Audit;
 using sales_portal.core.Configuration;
 using sales_portal.core.IService;
 using sales_portal.core.Live;
@@ -25,7 +27,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services
-    .AddControllers()
+    .AddControllers(options => options.Filters.Add<AuditActionFilter>())
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
@@ -94,6 +96,13 @@ builder.Services.AddHostedService<sales_portal.api.Live.PortalChangeNotification
 builder.Services.AddHostedService<sales_portal.api.Notifications.PortalEventNotificationService>();
 builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationPublishWorker>();
 builder.Services.AddHostedService<sales_portal.api.Notifications.NotificationRetentionService>();
+
+builder.Services.AddScoped<IAuditContext, AuditContext>();
+builder.Services.AddSingleton<QueuedAuditWriter>();
+builder.Services.AddSingleton<IAuditWriter>(services => services.GetRequiredService<QueuedAuditWriter>());
+builder.Services.AddSingleton<IAuditStatus>(services => services.GetRequiredService<QueuedAuditWriter>());
+builder.Services.AddHostedService<AuditWriteWorker>();
+builder.Services.AddHostedService<AuditRetentionService>();
 
 // The actor behind a write; absent outside an authenticated HTTP request.
 builder.Services.AddHttpContextAccessor();

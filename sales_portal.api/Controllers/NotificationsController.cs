@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.core.Audit;
 using sales_portal.core.IService;
 
 namespace sales_portal.api.Controllers;
@@ -44,6 +45,7 @@ public class NotificationsController : ControllerBase
         return Ok(new { unreadCount });
     }
 
+    [NoAudit("Personal read state, not a business change.")]
     [HttpPost("{id:guid}/read")]
     public async Task<IActionResult> MarkRead(Guid id, CancellationToken cancellationToken)
     {
@@ -54,6 +56,7 @@ public class NotificationsController : ControllerBase
             : NotFound();
     }
 
+    [NoAudit("Personal read state, not a business change.")]
     [HttpPost("read-all")]
     public async Task<IActionResult> MarkAllRead(CancellationToken cancellationToken)
     {

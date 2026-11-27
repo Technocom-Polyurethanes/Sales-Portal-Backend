@@ -1,6 +1,7 @@
 ﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -19,6 +20,7 @@ public class AuthController : ControllerBase
     }
 
     [AllowAnonymous]
+    [Audit(AuditActions.Login)]
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponseDto>> Login([FromBody] LoginRequestDto request)
     {
@@ -38,6 +40,7 @@ public class AuthController : ControllerBase
         return user == null ? Unauthorized() : Ok(user);
     }
 
+    [Audit(AuditActions.PasswordChanged)]
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto request)
     {

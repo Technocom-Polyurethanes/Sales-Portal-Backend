@@ -66,7 +66,7 @@ public class LiveUpdateTests
         Assert.Empty(unknownRegions);
         Assert.Empty(unknownTopics);
 
-        Assert.Equal(14, ChangeTopics.MappedTables.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(15, ChangeTopics.MappedTables.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]

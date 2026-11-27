@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -24,6 +25,7 @@ public class SettingsController : ControllerBase
         return Ok(await _settingsService.GetAsync(cancellationToken));
     }
 
+    [Audit(AuditActions.SettingsUpdated)]
     [HttpPut]
     [Authorize(Policy = Policies.SettingsWrite)]
     public async Task<ActionResult<SettingsDto>> Update(

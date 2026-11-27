@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -24,6 +25,7 @@ public class CatalogController : ControllerBase
         return Ok(await _catalogService.GetBootstrapAsync(cancellationToken));
     }
 
+    [Audit(AuditActions.PaymentTermCreated)]
     [HttpPost("payment-terms")]
     [Authorize(Policy = Policies.CatalogCreate)]
     public async Task<ActionResult<PaymentTermDto>> CreatePaymentTerm(
@@ -34,6 +36,7 @@ public class CatalogController : ControllerBase
         return Created($"api/catalog/payment-terms/{term.Id}", term);
     }
 
+    [Audit(AuditActions.PaymentTermUpdated)]
     [HttpPut("payment-terms/{id:guid}")]
     [Authorize(Policy = Policies.CatalogEdit)]
     public async Task<ActionResult<PaymentTermDto>> UpdatePaymentTerm(

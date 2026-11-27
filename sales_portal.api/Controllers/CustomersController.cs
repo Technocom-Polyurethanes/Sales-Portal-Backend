@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using sales_portal.api.Authorization;
+using sales_portal.core.Audit;
 using sales_portal.core.DTOs;
 using sales_portal.core.IService;
 
@@ -64,6 +65,7 @@ public class CustomersController : ControllerBase
         return customer == null ? NotFound() : Ok(customer);
     }
 
+    [Audit(AuditActions.CustomerCreated)]
     [HttpPost]
     [Authorize(Policy = Policies.CatalogCreate)]
     public async Task<ActionResult<CustomerDetailDto>> CreateCustomer(
@@ -74,6 +76,7 @@ public class CustomersController : ControllerBase
         return CreatedAtAction(nameof(GetCustomer), new { id = customer.Id }, customer);
     }
 
+    [Audit(AuditActions.CustomerUpdated)]
     [HttpPut("{id:guid}")]
     [Authorize(Policy = Policies.CatalogEdit)]
     public async Task<ActionResult<CustomerDetailDto>> UpdateCustomer(
@@ -85,6 +88,7 @@ public class CustomersController : ControllerBase
         return customer == null ? NotFound() : Ok(customer);
     }
 
+    [Audit(AuditActions.CustomerDeleted)]
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = Policies.CatalogDelete)]
     public async Task<IActionResult> DeleteCustomer(
