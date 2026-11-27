@@ -37,7 +37,10 @@ internal sealed class TestDatabase : IDisposable
 
 internal static class TestFactory
 {
-    public static OfferService CreateOfferService(AppDbContext context)
+    public static OfferService CreateOfferService(
+        AppDbContext context,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
     {
         var catalog = new CatalogService(
             new Repository<PaymentTerm>(context),
@@ -56,16 +59,41 @@ internal static class TestFactory
             new Repository<OfferDeliveryBatch>(context),
             new Repository<OfferDeliveryAllocation>(context),
             catalog,
-            new OfferCalculator(new OfferDocumentBuilder()));
+            new OfferCalculator(new OfferDocumentBuilder()),
+            actor: actor,
+            publisher: publisher);
     }
 
-    public static CustomerService CreateCustomerService(AppDbContext context)
-        => new(new Repository<Customer>(context), new Repository<Offer>(context));
+    public static CustomerService CreateCustomerService(
+        AppDbContext context,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
+        => new(new Repository<Customer>(context), new Repository<Offer>(context), actor: actor, publisher: publisher);
+
+    public static MaterialService CreateMaterialService(
+        AppDbContext context,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
+        => new(new Repository<Material>(context), new Repository<Offer>(context), actor: actor, publisher: publisher);
 
     public static BankAccountService CreateBankAccountService(
         AppDbContext context,
-        IReferenceDataCache? cache = null)
-        => new(new Repository<BankAccount>(context), cache);
+        IReferenceDataCache? cache = null,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null)
+        => new(new Repository<BankAccount>(context), cache, actor, publisher);
+
+    public static UserService CreateUserService(
+        AppDbContext context,
+        ICurrentActor? actor = null,
+        INotificationPublisher? publisher = null,
+        INotificationBroadcaster? notifications = null)
+        => new(
+            new Repository<User>(context),
+            new Repository<Offer>(context),
+            actor: actor,
+            publisher: publisher,
+            notifications: notifications);
 
     public static ImportService CreateImportService(
         AppDbContext context,
