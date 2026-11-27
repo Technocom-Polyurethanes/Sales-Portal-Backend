@@ -7,6 +7,8 @@ public interface ILiveListenerStatus
 {
     string State { get; }
 
+    bool IsConnected(string listener);
+
     void Update(string listener, bool connected);
 }
 
@@ -17,6 +19,9 @@ public sealed class LiveListenerStatus : ILiveListenerStatus
     public string State => _listeners.IsEmpty || _listeners.Values.Any(connected => !connected)
         ? "disconnected"
         : "connected";
+
+    public bool IsConnected(string listener) =>
+        _listeners.TryGetValue(listener, out var connected) && connected;
 
     public void Update(string listener, bool connected) => _listeners[listener] = connected;
 }

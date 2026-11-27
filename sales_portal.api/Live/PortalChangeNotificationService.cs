@@ -16,7 +16,7 @@ public sealed class PortalChangeNotificationService : BackgroundService
     private const string ListenerName = "changes";
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     private readonly IConfiguration _configuration;
     private readonly IReferenceDataCache _cache;
@@ -48,8 +48,15 @@ public sealed class PortalChangeNotificationService : BackgroundService
         }
 
         _status.Update(ListenerName, false);
-        // LISTEN is unsupported by transaction poolers, so poll table counters as a fallback.
-        _ = PollForChangesAsync(connectionString, stoppingToken);
+        // LISTEN is unsupported by transaction poolers, so poll only while it is down.
+        _ = RunPollAsync(
+            token => ReadCountersAsync(connectionString, token),
+            () => _status.IsConnected(ListenerName),
+            Announce,
+            PollInterval,
+            exception => _logger.LogWarning(
+                "Postgres change poll failed ({ErrorType}).", exception.GetType().Name),
+            stoppingToken);
         var retryDelay = InitialRetryDelay;
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -117,50 +124,69 @@ public sealed class PortalChangeNotificationService : BackgroundService
                 .Select(entry => entry.Key)
                 .ToArray();
 
-    private async Task PollForChangesAsync(string connectionString, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyDictionary<string, (long Ins, long Upd, long Del)>> ReadCountersAsync(
+        string connectionString,
+        CancellationToken cancellationToken)
     {
-        Dictionary<string, (long Ins, long Upd, long Del)>? previous = null;
+        await using var connection = PostgresNotificationListener.CreateConnection(connectionString, "SalesPortalChangePoll");
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = new NpgsqlCommand(
+            "SELECT relname, n_tup_ins, n_tup_upd, n_tup_del FROM pg_stat_all_tables WHERE schemaname = 'public' AND relname::text = ANY(@tables)",
+            connection);
+        command.Parameters.AddWithValue("tables", ChangeTopics.MappedTables.ToArray());
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+        var current = new Dictionary<string, (long, long, long)>(StringComparer.Ordinal);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            current[reader.GetString(0)] = (reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3));
+        }
+
+        return current;
+    }
+
+    public static async Task RunPollAsync(
+        Func<CancellationToken, Task<IReadOnlyDictionary<string, (long Ins, long Upd, long Del)>>> readCounters,
+        Func<bool> isConnected,
+        Action<IReadOnlyCollection<string>> announce,
+        TimeSpan interval,
+        Action<Exception> onError,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyDictionary<string, (long Ins, long Upd, long Del)>? previous = null;
         var failed = false;
         while (!cancellationToken.IsCancellationRequested)
         {
-            try
+            if (isConnected())
             {
-                await using var connection = PostgresNotificationListener.CreateConnection(connectionString, "SalesPortalChangePoll");
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                await using var command = new NpgsqlCommand(
-                    "SELECT relname, n_tup_ins, n_tup_upd, n_tup_del FROM pg_stat_all_tables WHERE schemaname = 'public' AND relname::text = ANY(@tables)",
-                    connection);
-                command.Parameters.AddWithValue("tables", ChangeTopics.MappedTables.ToArray());
-                await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-
-                var current = new Dictionary<string, (long, long, long)>(StringComparer.Ordinal);
-                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    current[reader.GetString(0)] = (reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3));
-                }
-
-                var changed = ChangedTables(previous, current);
-                if (changed.Length > 0) Announce(changed);
-
-                previous = current;
-                failed = false;
+                // LISTEN covers this window; a stale baseline would replay its notices on reconnect.
+                previous = null;
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            else
             {
-                break;
-            }
-            catch (Exception exception)
-            {
-                if (!failed)
+                try
                 {
-                    _logger.LogWarning("Postgres change poll failed ({ErrorType}).", exception.GetType().Name);
+                    var current = await readCounters(cancellationToken).ConfigureAwait(false);
+                    var changed = ChangedTables(previous, current);
+                    if (changed.Length > 0) announce(changed);
+
+                    previous = current;
+                    failed = false;
                 }
-                failed = true;
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    if (!failed) onError(exception);
+                    failed = true;
+                }
             }
 
             try
             {
-                await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

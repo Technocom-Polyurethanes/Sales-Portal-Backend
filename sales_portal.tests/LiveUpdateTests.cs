@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
@@ -78,6 +79,99 @@ public class LiveUpdateTests
             ["customers"] = (4, 5, 6)
         };
         Assert.Equal(new[] { "offers" }, PortalChangeNotificationService.ChangedTables(after, reset));
+    }
+
+    [Fact]
+    public async Task Poll_is_skipped_while_the_listener_is_connected()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var reads = 0;
+        var announcements = new ConcurrentQueue<string>();
+
+        var poll = PortalChangeNotificationService.RunPollAsync(
+            _ =>
+            {
+                Interlocked.Increment(ref reads);
+                return Task.FromResult<IReadOnlyDictionary<string, (long, long, long)>>(
+                    new Dictionary<string, (long, long, long)>());
+            },
+            () => true,
+            changed => announcements.Enqueue(changed.First()),
+            TimeSpan.FromMilliseconds(10),
+            _ => { },
+            cancellation.Token);
+
+        await Task.Delay(100);
+        cancellation.Cancel();
+        await poll;
+
+        Assert.Equal(0, Volatile.Read(ref reads));
+        Assert.Empty(announcements);
+    }
+
+    [Fact]
+    public async Task Poll_resumes_when_the_listener_disconnects()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var connected = true;
+        var reads = 0;
+        var version = 0;
+        var announcements = new ConcurrentQueue<string>();
+
+        Task<IReadOnlyDictionary<string, (long, long, long)>> Read(CancellationToken _)
+        {
+            Interlocked.Increment(ref reads);
+            var current = new Dictionary<string, (long, long, long)>
+            {
+                ["offers"] = (0, Interlocked.CompareExchange(ref version, 0, 0), 0)
+            };
+            return Task.FromResult<IReadOnlyDictionary<string, (long, long, long)>>(current);
+        }
+
+        var poll = PortalChangeNotificationService.RunPollAsync(
+            Read,
+            () => connected,
+            changed => announcements.Enqueue(changed.First()),
+            TimeSpan.FromMilliseconds(10),
+            _ => { },
+            cancellation.Token);
+
+        await Task.Delay(50);
+        Assert.Equal(0, Volatile.Read(ref reads));
+
+        connected = false;
+        await WaitForAsync(() => Volatile.Read(ref reads) >= 1);
+        Assert.Empty(announcements);
+
+        Interlocked.Increment(ref version);
+        await WaitForAsync(() => announcements.Count == 1);
+        Assert.Contains("offers", announcements);
+
+        // A write while LISTEN is up must not be re-announced when polling resumes.
+        connected = true;
+        await Task.Delay(50);
+        Interlocked.Increment(ref version);
+        await Task.Delay(50);
+        var readsBeforeResume = Volatile.Read(ref reads);
+        connected = false;
+        await WaitForAsync(() => Volatile.Read(ref reads) > readsBeforeResume);
+        Assert.Single(announcements);
+
+        Interlocked.Increment(ref version);
+        await WaitForAsync(() => announcements.Count == 2);
+        cancellation.Cancel();
+        await poll;
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition());
     }
 
     [Fact]
