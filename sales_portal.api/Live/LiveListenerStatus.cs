@@ -7,6 +7,8 @@ public interface ILiveListenerStatus
 {
     string State { get; }
 
+    bool Disabled { get; }
+
     bool IsConnected(string listener);
 
     void Disable();
@@ -18,6 +20,8 @@ public sealed class LiveListenerStatus : ILiveListenerStatus
 {
     private readonly ConcurrentDictionary<string, bool> _listeners = new(StringComparer.Ordinal);
     private volatile bool _disabled;
+
+    public bool Disabled => _disabled;
 
     public string State => _disabled
         ? "disabled"

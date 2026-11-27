@@ -39,6 +39,7 @@ or deleted user returns `401`. A role the user lacks returns `403` ProblemDetail
 | Data import (templates, preview, commit, history) | yes | no | yes |
 | Company settings (`PUT /api/settings`) | yes | no | no |
 | Users (`/api/users`) | yes | no | no |
+| System status (`/api/system/status`) | yes | no | no |
 
 The matrix lives in one file, `sales_portal.api/Authorization/Policies.cs`.
 
@@ -906,6 +907,17 @@ The browser reads the inbox on load and on every `ready` frame (reconnect), dedu
 shows the count from the same page snapshot as its rows. Deactivation, role change or deletion
 closes that user's SSE subscription; streams also recheck eligibility on each heartbeat and before
 writing a frame.
+
+### System status (Admin)
+
+`GET /api/system/status` gives admins the diagnostics behind the anonymous `/health` smoke test:
+`status` (`Healthy`, `Degraded` or `Unhealthy`), `checkedAt`, `version`, `environment`,
+`uptimeSeconds`, `database` (`status` and `latencyMs`) and `live`. `live` carries `state`
+(`connected`, `disconnected` or `disabled`), `disabled`, `pollingFallback` (`true` only while a
+listener is down), and the individual `changes` and `notifications` listener states. A disconnected
+or disabled listener makes the overall status `Degraded`; a database that cannot be reached makes it
+`Unhealthy`. The endpoint
+never starts a listener, changes configuration or returns secrets.
 
 `GET /health` is anonymous and returns `liveListener` as `connected`, `disconnected` or
 `disabled` alongside `status` and `database`. `disabled` means no notification connection string
