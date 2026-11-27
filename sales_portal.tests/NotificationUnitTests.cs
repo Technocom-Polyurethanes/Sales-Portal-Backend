@@ -95,6 +95,31 @@ public class NotificationUnitTests
     }
 
     [Fact]
+    public async Task Slow_reader_keeps_at_most_100_items()
+    {
+        var broadcaster = new NotificationBroadcaster();
+        var owner = Guid.NewGuid();
+        using var subscription = broadcaster.Subscribe(owner);
+
+        for (var i = 0; i < 200; i++)
+        {
+            broadcaster.Publish(new NotificationEventPayload(
+                Dto(Guid.NewGuid()),
+                [new NotificationDelivery(owner, Guid.NewGuid())]));
+        }
+
+        using var received = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.NotNull(await subscription.WaitAsync(received.Token));
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => subscription.WaitAsync(timeout.Token));
+    }
+
+    [Fact]
     public async Task Broadcaster_closes_a_user_stream_on_revocation()
     {
         var broadcaster = new NotificationBroadcaster();

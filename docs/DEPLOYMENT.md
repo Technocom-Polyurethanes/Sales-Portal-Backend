@@ -56,11 +56,13 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 Both the change listener and the notification listener use a dedicated `LISTEN` connection. Npgsql
 TCP keepalive is enabled with a 15-second interval, and a `SELECT 1` probe runs every 60 seconds;
 a half-open socket therefore fails into the reconnect loop (0.5s to 30s exponential backoff with
-jitter) instead of hanging. `GET /health` reports `liveListener` as `connected` or `disconnected`.
-This is a diagnostic signal only: in-process publishes and the table-counter poll fallback keep
-live updates working when the dedicated connection is unavailable, and local notification delivery
-never depends on it. Every publish also sends `pg_notify`, so healthy instances still receive
-notifications published by another instance.
+jitter) instead of hanging. `GET /health` reports `liveListener` as `connected`, `disconnected`
+or `disabled`; `disabled` means no notification connection string is configured, so neither
+listener nor the counter poll runs. This is a diagnostic signal only: in-process publishes keep
+live updates working without a dedicated connection, and the table-counter poll covers a failed
+`LISTEN` when a connection string is configured. Local notification delivery never depends on
+it. Every publish also sends `pg_notify`, so healthy instances still receive notifications
+published by another instance.
 
 `/api/events` is a long-lived `text/event-stream` response. The controller sends `Cache-Control:
 no-store, no-transform` and `X-Accel-Buffering: no`, and disables response buffering. The shipped

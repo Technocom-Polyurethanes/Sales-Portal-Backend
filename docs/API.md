@@ -869,11 +869,11 @@ payload contains only the table name, never row data.
 `ConnectionStrings:PortalNotifications` / `PORTAL_NOTIFICATIONS_CONNECTION_STRING` overrides the
 connection used for live updates; it otherwise falls back to the normal database connection. Set it
 only when the host offers a direct/session-mode connection. Transaction poolers such as MonsterASP's
-PgBouncer do not support `LISTEN`, so the API also polls `pg_stat_all_tables` row counters every
-second and announces tables whose counters changed. In-process publishes and the poll fallback keep
-live updates working on poolers; `LISTEN` remains the low-latency path where it is available. After
-every listener (re)connect the server re-announces all mapped tables because notifications during a
-disconnect are lost.
+PgBouncer do not support `LISTEN`, so while that listener is disconnected the API polls
+`pg_stat_all_tables` row counters every 2 seconds and announces tables whose counters changed.
+In-process publishes and the poll fallback keep live updates working on poolers; `LISTEN` remains
+the low-latency path where it is available. After every listener (re)connect the server re-announces
+all mapped tables because notifications during a disconnect are lost.
 
 ### Notifications
 
@@ -907,9 +907,12 @@ shows the count from the same page snapshot as its rows. Deactivation, role chan
 closes that user's SSE subscription; streams also recheck eligibility on each heartbeat and before
 writing a frame.
 
-`GET /health` is anonymous and returns `liveListener` as `connected` or `disconnected` alongside
-`status` and `database`. The field is a health signal only: local notification delivery and
-in-process live updates still work when no dedicated `LISTEN` connection is available.
+`GET /health` is anonymous and returns `liveListener` as `connected`, `disconnected` or
+`disabled` alongside `status` and `database`. `disabled` means no notification connection string
+is configured, so neither the dedicated `LISTEN` connections nor the counter poll can run;
+`disconnected` means a connection string exists but the `LISTEN` socket is down, where the poll
+fallback applies. The field is a health signal only: local notification delivery and in-process
+live updates still work in either case.
 
 ## Additive contract summary
 
