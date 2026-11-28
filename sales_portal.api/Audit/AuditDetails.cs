@@ -35,7 +35,17 @@ public static class AuditDetails
         return UsernamePattern.IsMatch(cleaned) ? cleaned : string.Empty;
     }
 
+    public static string SanitizeAttemptedUsername(string? value) => Clean(value, 100);
+
+    public static string? SanitizeUserAgent(string? value)
+    {
+        var cleaned = Clean(value, 256);
+        return cleaned.Length == 0 ? null : cleaned;
+    }
+
     public static string SanitizeDescription(string? value) => Clean(value, 250);
+
+    public static string SanitizeText(string? value, int length) => Clean(value, length);
 
     private static string Clean(string? value, int length) =>
         Truncate(new string((value ?? string.Empty)

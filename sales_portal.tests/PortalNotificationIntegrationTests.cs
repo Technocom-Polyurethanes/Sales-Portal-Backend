@@ -32,6 +32,39 @@ public class PortalNotificationIntegrationTests
         Environment.GetEnvironmentVariable(TestConnectionStringEnv);
 
     [Fact]
+    public async Task Audit_user_agent_migration_applies()
+    {
+        if (string.IsNullOrWhiteSpace(TestConnectionString())) return;
+
+        using var factory = new PortalNotificationApiFactory(TestConnectionString()!);
+        await factory.PrepareDatabaseAsync();
+
+        await using var connection = new NpgsqlConnection(TestConnectionString()!);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT column_name, data_type, character_maximum_length, is_nullable
+            FROM information_schema.columns
+            WHERE table_name = 'audit_logs' AND column_name IN ('user_agent', 'duration_ms')
+            ORDER BY column_name
+            """;
+        await using var reader = await command.ExecuteReaderAsync();
+        var columns = new List<(string Name, string Type, long? Length, bool Nullable)>();
+        while (await reader.ReadAsync())
+        {
+            columns.Add((
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                reader.GetString(3) == "YES"));
+        }
+
+        Assert.Equal(2, columns.Count);
+        Assert.Contains(("duration_ms", "integer", (long?)null, true), columns);
+        Assert.Contains(("user_agent", "character varying", (long?)256, true), columns);
+    }
+
+    [Fact]
     public async Task Direct_sql_write_emits_sse_and_invalidates_cache()
     {
         if (string.IsNullOrWhiteSpace(TestConnectionString())) return;

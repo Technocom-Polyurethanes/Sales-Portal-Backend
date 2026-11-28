@@ -16,10 +16,12 @@ namespace sales_portal.api.Controllers;
 public class OffersController : ControllerBase
 {
     private readonly IOfferService _offerService;
+    private readonly IAuditContext _audit;
 
-    public OffersController(IOfferService offerService)
+    public OffersController(IOfferService offerService, IAuditContext audit)
     {
         _offerService = offerService;
+        _audit = audit;
     }
 
     [NoAudit("Pure calculation; no state changes.")]
@@ -84,6 +86,7 @@ public class OffersController : ControllerBase
         CancellationToken cancellationToken)
     {
         var document = await _offerService.GetDocumentAsync(id, cancellationToken);
+        if (document is not null) _audit.SetEntity("offer", id, document.Metadata.Reference);
         return document == null ? NotFound() : Ok(document);
     }
 
@@ -101,6 +104,7 @@ public class OffersController : ControllerBase
         }
 
         var offer = await _offerService.CreateAsync(request, userId.Value, cancellationToken);
+        _audit.SetEntity("offer", offer.Id, offer.Reference);
         return CreatedAtAction(nameof(GetOffer), new { id = offer.Id }, offer);
     }
 
@@ -118,7 +122,9 @@ public class OffersController : ControllerBase
             return Unauthorized();
         }
 
-        return Ok(await _offerService.UpdateAsync(id, request, userId.Value, cancellationToken));
+        var offer = await _offerService.UpdateAsync(id, request, userId.Value, cancellationToken);
+        if (offer is not null) _audit.SetEntity("offer", offer.Id, offer.Reference);
+        return Ok(offer);
     }
 
     [Audit(AuditActions.OfferRevised)]
@@ -135,6 +141,7 @@ public class OffersController : ControllerBase
         }
 
         var offer = await _offerService.ReviseAsync(id, userId.Value, cancellationToken);
+        _audit.SetEntity("offer", offer.Id, offer.Reference);
         return CreatedAtAction(nameof(GetOffer), new { id = offer.Id }, offer);
     }
 
@@ -152,7 +159,9 @@ public class OffersController : ControllerBase
             return Unauthorized();
         }
 
-        return Ok(await _offerService.UpdateStatusAsync(id, request, userId.Value, cancellationToken));
+        var offer = await _offerService.UpdateStatusAsync(id, request, userId.Value, cancellationToken);
+        if (offer is not null) _audit.SetEntity("offer", offer.Id, offer.Reference);
+        return Ok(offer);
     }
 
     [Audit(AuditActions.OfferDeleted)]
@@ -162,6 +171,8 @@ public class OffersController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
+        var offer = await _offerService.GetByIdAsync(id, cancellationToken);
+        _audit.SetEntity("offer", id, offer?.Reference);
         return await _offerService.DeleteAsync(id, cancellationToken)
             ? NoContent()
             : NotFound();

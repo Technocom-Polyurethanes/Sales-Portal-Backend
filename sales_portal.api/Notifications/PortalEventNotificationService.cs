@@ -43,6 +43,7 @@ public sealed class PortalEventNotificationService : BackgroundService
 
         _status.Update(ListenerName, false);
         var retryDelay = InitialRetryDelay;
+        var connectedOnce = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             TimeSpan? wait = null;
@@ -56,6 +57,8 @@ public sealed class PortalEventNotificationService : BackgroundService
                 await command.ExecuteNonQueryAsync(stoppingToken).ConfigureAwait(false);
 
                 _status.Update(ListenerName, true);
+                if (connectedOnce) _status.RecordReconnect();
+                connectedOnce = true;
                 retryDelay = InitialRetryDelay;
 
                 await PostgresNotificationListener.ListenAsync(
@@ -73,6 +76,7 @@ public sealed class PortalEventNotificationService : BackgroundService
                 wait = Jitter(retryDelay);
                 retryDelay = TimeSpan.FromMilliseconds(
                     Math.Min(retryDelay.TotalMilliseconds * 2, MaxRetryDelay.TotalMilliseconds));
+                _status.RecordError(exception.GetType().Name);
 
                 _logger.LogWarning(
                     "Notification event listener failed ({ErrorType}); retrying in {RetryDelay}.",
@@ -100,6 +104,7 @@ public sealed class PortalEventNotificationService : BackgroundService
 
     private void Deliver(IReadOnlyCollection<string> payloads)
     {
+        _status.RecordEvent(ListenerName);
         foreach (var payload in payloads)
         {
             try

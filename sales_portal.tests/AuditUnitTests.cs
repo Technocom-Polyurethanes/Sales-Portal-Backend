@@ -109,7 +109,8 @@ public class AuditUnitTests
         Assert.Equal("offer", entry.EntityType);
         Assert.Equal(offerId, entry.EntityId);
         Assert.Equal(offerId.ToString(), entry.EntityLabel);
-        Assert.Equal("Updated offer", entry.Description);
+        Assert.Equal("Changed offer status", entry.Description);
+        Assert.Null(entry.UserAgent);
     }
 
     [Fact]

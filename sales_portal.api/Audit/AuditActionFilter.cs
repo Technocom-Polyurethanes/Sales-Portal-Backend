@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using sales_portal.core.Audit;
+using sales_portal.core.DTOs;
 using sales_portal.core.Notifications;
 
 namespace sales_portal.api.Audit;
@@ -20,6 +22,7 @@ public sealed class AuditActionFilter : IAsyncActionFilter
             return;
         }
 
+        var timer = Stopwatch.StartNew();
         ActionExecutedContext? executed = null;
         Exception? failure = null;
         try
@@ -29,13 +32,23 @@ public sealed class AuditActionFilter : IAsyncActionFilter
         catch (Exception exception)
         {
             failure = exception;
-            Enqueue(context, attribute.Code, executed?.Result, failure);
+            timer.Stop();
+            try
+            {
+                Enqueue(context, attribute.Code, executed?.Result, failure, timer);
+            }
+            catch (Exception)
+            {
+                // Auditing is best effort: never replace the request's original failure.
+            }
+
             throw;
         }
 
+        timer.Stop();
         try
         {
-            Enqueue(context, attribute.Code, executed?.Result, null);
+            Enqueue(context, attribute.Code, executed?.Result, null, timer);
         }
         catch (Exception)
         {
@@ -47,7 +60,8 @@ public sealed class AuditActionFilter : IAsyncActionFilter
         ActionExecutingContext context,
         string code,
         IActionResult? result,
-        Exception? failure)
+        Exception? failure,
+        Stopwatch timer)
     {
         var services = context.HttpContext.RequestServices;
         var writer = services.GetService(typeof(IAuditWriter)) as IAuditWriter;
@@ -59,6 +73,22 @@ public sealed class AuditActionFilter : IAsyncActionFilter
             ?? NoAuditContext.Instance;
         var http = context.HttpContext;
 
+        var responseActor = result is ObjectResult { Value: LoginResponseDto login }
+            ? new AuditResponseActor(
+                login.User.Id,
+                login.User.Username,
+                login.User.FullName,
+                login.User.Role.ToString())
+            : null;
+        var attemptedUsername = context.ActionArguments.Values
+            .OfType<LoginRequestDto>()
+            .FirstOrDefault()?.Username;
+        var facts = new AuditRequestFacts(
+            http.Request.Headers.UserAgent.ToString(),
+            (int)Math.Min(timer.ElapsedMilliseconds, int.MaxValue),
+            attemptedUsername,
+            responseActor);
+
         writer.Enqueue(AuditEntryFactory.Create(
             http,
             code,
@@ -68,7 +98,8 @@ public sealed class AuditActionFilter : IAsyncActionFilter
             audit,
             result,
             failure,
-            context.RouteData.Values));
+            context.RouteData.Values,
+            facts));
     }
 
     private sealed class AnonymousActor : ICurrentActor

@@ -59,6 +59,7 @@ public sealed class PortalChangeNotificationService : BackgroundService
                 "Postgres change poll failed ({ErrorType}).", exception.GetType().Name),
             stoppingToken);
         var retryDelay = InitialRetryDelay;
+        var connectedOnce = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             TimeSpan? wait = null;
@@ -70,6 +71,8 @@ public sealed class PortalChangeNotificationService : BackgroundService
                 await command.ExecuteNonQueryAsync(stoppingToken).ConfigureAwait(false);
 
                 _status.Update(ListenerName, true);
+                if (connectedOnce) _status.RecordReconnect();
+                connectedOnce = true;
                 _logger.LogInformation("Listening for Postgres changes on {Channel}.", NotificationChannel);
                 retryDelay = InitialRetryDelay;
 
@@ -90,6 +93,7 @@ public sealed class PortalChangeNotificationService : BackgroundService
                 wait = Jitter(retryDelay);
                 retryDelay = TimeSpan.FromMilliseconds(
                     Math.Min(retryDelay.TotalMilliseconds * 2, MaxRetryDelay.TotalMilliseconds));
+                _status.RecordError(exception.GetType().Name);
 
                 _logger.LogWarning(
                     "Postgres live listener failed ({ErrorType}); retrying in {RetryDelay}.",
@@ -213,6 +217,8 @@ public sealed class PortalChangeNotificationService : BackgroundService
         {
             return;
         }
+
+        _status.RecordEvent(ListenerName);
 
         // Invalidating first drops every cached copy before a browser can reload; it also announces
         // the region topics itself, so only the remaining topics are published here.

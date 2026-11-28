@@ -29,10 +29,11 @@ public static class AuditActions
     public const string UserPasswordReset = "user.password_reset";
     public const string UserDeleted = "user.deleted";
     public const string ImportCommitted = "import.committed";
+    public const string Exported = "audit.exported";
 
     public static readonly string[] Categories =
     [
-        "auth", "offers", "customers", "materials", "banks", "catalog", "settings", "users", "imports"
+        "auth", "offers", "customers", "materials", "banks", "catalog", "settings", "users", "imports", "audit"
     ];
 
     public static readonly string[] All =
@@ -45,8 +46,40 @@ public static class AuditActions
         PaymentTermCreated, PaymentTermUpdated,
         SettingsUpdated,
         UserCreated, UserUpdated, UserPasswordReset, UserDeleted,
-        ImportCommitted
+        ImportCommitted, Exported
     ];
+
+    /// <summary>Explicit fallback text per action; service-supplied descriptions always win.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Descriptions = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        [Login] = "Signed in",
+        [LoginFailed] = "Failed sign-in attempt",
+        [PasswordChanged] = "Changed own password",
+        [OfferCreated] = "Created offer",
+        [OfferUpdated] = "Updated offer",
+        [OfferRevised] = "Revised offer",
+        [OfferStatusChanged] = "Changed offer status",
+        [OfferDeleted] = "Deleted offer",
+        [OfferDocumentOpened] = "Opened the proforma document",
+        [CustomerCreated] = "Created customer",
+        [CustomerUpdated] = "Updated customer",
+        [CustomerDeleted] = "Deleted customer",
+        [MaterialCreated] = "Created material",
+        [MaterialUpdated] = "Updated material",
+        [MaterialDeleted] = "Deleted material",
+        [BankCreated] = "Created bank account",
+        [BankUpdated] = "Updated bank account",
+        [BankDeleted] = "Deleted bank account",
+        [PaymentTermCreated] = "Created payment term",
+        [PaymentTermUpdated] = "Updated payment term",
+        [SettingsUpdated] = "Updated settings",
+        [UserCreated] = "Created user",
+        [UserUpdated] = "Updated user",
+        [UserPasswordReset] = "Reset user password",
+        [UserDeleted] = "Deleted user",
+        [ImportCommitted] = "Committed import",
+        [Exported] = "Exported audit log"
+    };
 
     public static string CategoryFor(string action)
     {
@@ -62,7 +95,11 @@ public static class AuditActions
             "settings" => "settings",
             "user" => "users",
             "import" => "imports",
+            "audit" => "audit",
             _ => prefix
         };
     }
+
+    public static string DescriptionFor(string action) =>
+        Descriptions.TryGetValue(action, out var description) ? description : string.Empty;
 }

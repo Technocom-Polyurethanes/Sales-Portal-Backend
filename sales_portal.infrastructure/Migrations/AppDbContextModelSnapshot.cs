@@ -74,6 +74,10 @@ namespace sales_portal.infrastructure.Migrations
                         .HasColumnName("details")
                         .HasDefaultValueSql("'{}'::jsonb");
 
+                    b.Property<int?>("DurationMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_ms");
+
                     b.Property<Guid?>("EntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("entity_id");
@@ -120,6 +124,11 @@ namespace sales_portal.infrastructure.Migrations
                     b.Property<int>("StatusCode")
                         .HasColumnType("integer")
                         .HasColumnName("status_code");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("user_agent");
 
                     b.HasKey("Id")
                         .HasName("pk_audit_logs");

@@ -87,6 +87,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IChangeBroadcaster, ChangeBroadcaster>();
 builder.Services.AddSingleton<IReferenceDataCache, ReferenceDataCache>();
 builder.Services.AddSingleton<INotificationBroadcaster, NotificationBroadcaster>();
+builder.Services.AddSingleton<LatencyHistory>();
 builder.Services.AddSingleton<NotificationPublisher>();
 builder.Services.AddSingleton<QueuedNotificationPublisher>();
 builder.Services.AddSingleton<INotificationPublisher>(services =>
