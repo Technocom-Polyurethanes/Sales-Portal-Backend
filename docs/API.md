@@ -919,9 +919,9 @@ The payload has `status` (`Healthy`, `Degraded` or `Unhealthy`), `checkedAt`, `v
 `realtime`, `audit`, `jobs`, `security` and `data`.
 
 - `version` equals `apiVersion`: the app/API version from the built assembly. `commit` is the
-  deployed short git SHA (`BUILD_COMMIT`, otherwise `SOURCE_COMMIT`) or `null` when absent or
-  unknown; `startedAt` is the process start time in UTC. The frontend footer version comes from
-  `frontend/package.json`, so the two versions may differ.
+  deployed short git SHA (`App:Commit`, `BUILD_COMMIT` or `SOURCE_COMMIT`), falling back to the
+  git revision embedded in the published assembly; `startedAt` is the process start time in UTC.
+  The frontend footer version comes from `frontend/package.json`, so the two versions may differ.
 - `database`: `status` (`Up`/`Down`), `latencyMs`, `latencyHistory` (last 20 probe samples),
   `serverVersion`, `sizeBytes`, `connectionsUsed`, `connectionsMax`, `pendingMigrations`,
   `lastMigration`.

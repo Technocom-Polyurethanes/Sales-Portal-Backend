@@ -49,7 +49,7 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 | `BOOTSTRAP_ADMIN_INITIALS` | (Optional, first-login only) Initials (used in offer references). |
 | `BOOTSTRAP_ADMIN_EMAIL` | (Optional, first-login only) Email of the admin. |
 | `Audit__RetentionDays` | Days of audit history kept by the daily cleanup job; default `365`. Set to `0` to keep all rows. |
-| `BUILD_COMMIT` | Short git SHA of the deployed build. `GET /api/system/status` returns it as `commit`, or `null` when absent/unknown. The API reads `App:Commit` first, then `BUILD_COMMIT`, then `SOURCE_COMMIT` as a fallback. |
+| `BUILD_COMMIT` | Short git SHA of the deployed build. `GET /api/system/status` returns it as `commit`. The API reads `App:Commit` first, then `BUILD_COMMIT`, then `SOURCE_COMMIT`; when none is set it uses the git revision embedded in the published assembly. |
 | `BUILD_VERSION` | Release version shown as `version`/`apiVersion` in `GET /api/system/status`. The API reads `App:Version` first, then `BUILD_VERSION`, then falls back to the built assembly version (`1.11.0`). |
 
 > `apiVersion` in `/api/system/status` is mirrored in `version`. It is independent of the frontend package version; keep the two in step by setting `BUILD_VERSION` to the same release number.
