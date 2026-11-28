@@ -16,10 +16,12 @@ namespace sales_portal.api.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly IAuditContext _audit;
 
-    public UsersController(IUserService userService)
+    public UsersController(IUserService userService, IAuditContext audit)
     {
         _userService = userService;
+        _audit = audit;
     }
 
     [HttpGet]
@@ -49,6 +51,7 @@ public class UsersController : ControllerBase
         CancellationToken cancellationToken)
     {
         var user = await _userService.CreateAsync(request, cancellationToken);
+        _audit.SetEntity("user", user.Id, user.Username);
         return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
     }
 
@@ -62,7 +65,9 @@ public class UsersController : ControllerBase
         var actingUserId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsed)
             ? parsed
             : Guid.Empty;
-        return Ok(await _userService.UpdateAsync(id, request, actingUserId, cancellationToken));
+        var user = await _userService.UpdateAsync(id, request, actingUserId, cancellationToken);
+        _audit.SetEntity("user", user.Id, user.Username);
+        return Ok(user);
     }
 
     [Audit(AuditActions.UserPasswordReset)]
@@ -72,6 +77,8 @@ public class UsersController : ControllerBase
         [FromBody] ResetPasswordDto request,
         CancellationToken cancellationToken)
     {
+        var user = await _userService.GetByIdAsync(id, cancellationToken);
+        _audit.SetEntity("user", id, user?.Username);
         await _userService.ResetPasswordAsync(id, request, cancellationToken);
         return NoContent();
     }
@@ -85,6 +92,8 @@ public class UsersController : ControllerBase
         var actingUserId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsed)
             ? parsed
             : Guid.Empty;
+        var user = await _userService.GetByIdAsync(id, cancellationToken);
+        _audit.SetEntity("user", id, user?.Username);
         return await _userService.DeleteAsync(id, actingUserId, cancellationToken)
             ? NoContent()
             : NotFound();

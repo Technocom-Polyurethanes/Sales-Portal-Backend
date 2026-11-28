@@ -20,6 +20,8 @@ public sealed class AuditEntry
     public string Path { get; set; } = string.Empty;
     public int StatusCode { get; set; }
     public string? IpAddress { get; set; }
+    public string? UserAgent { get; set; }
+    public int? DurationMs { get; set; }
     public Dictionary<string, string> Details { get; set; } = [];
 
     /// <summary>In-process retry counter; never persisted.</summary>

@@ -24,6 +24,7 @@ public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.Property(log => log.HttpMethod).IsRequired().HasMaxLength(10);
         builder.Property(log => log.Path).IsRequired().HasMaxLength(200);
         builder.Property(log => log.IpAddress).HasMaxLength(50);
+        builder.Property(log => log.UserAgent).HasMaxLength(256);
 
         builder.Property(log => log.Details)
             .IsRequired()

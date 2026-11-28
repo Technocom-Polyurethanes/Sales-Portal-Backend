@@ -19,8 +19,12 @@ public sealed class QueuedNotificationPublisher : INotificationPublisher
             SingleWriter = false
         });
     private readonly ILogger<QueuedNotificationPublisher> _logger;
+    private int _dropped;
 
     public QueuedNotificationPublisher(ILogger<QueuedNotificationPublisher> logger) => _logger = logger;
+
+    public int QueueDepth => _queue.Reader.Count;
+    public int Dropped => Volatile.Read(ref _dropped);
 
     public Task PublishAsync(
         NotificationEvent notification,
@@ -28,6 +32,7 @@ public sealed class QueuedNotificationPublisher : INotificationPublisher
     {
         if (!_queue.Writer.TryWrite(notification))
         {
+            Interlocked.Increment(ref _dropped);
             _logger.LogWarning("Notification queue is full; dropping {Type}.", notification.Type);
         }
 

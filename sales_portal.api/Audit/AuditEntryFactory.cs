@@ -20,35 +20,45 @@ public static class AuditEntryFactory
         IAuditContext audit,
         IActionResult? result,
         Exception? exception,
-        IReadOnlyDictionary<string, object?>? routeValues = null)
+        IReadOnlyDictionary<string, object?>? routeValues = null,
+        AuditRequestFacts? facts = null)
     {
         var statusCode = StatusFor(exception, result);
         var failed = exception is not null || statusCode >= StatusCodes.Status400BadRequest;
-        var entityType = audit.EntityType ?? EntityTypeFor(code);
-        var entityId = audit.EntityId ?? EntityIdFromRoute(routeValues);
-        var entityLabel = audit.EntityLabel ?? entityId?.ToString();
+        var action = failed && code == AuditActions.Login ? AuditActions.LoginFailed : code;
+        var responseActor = facts?.ResponseActor;
+        var failedLogin = failed && action is AuditActions.LoginFailed;
+        var entityType = audit.EntityType ?? (responseActor is null ? EntityTypeFor(code) : "user");
+        var entityId = audit.EntityId ?? responseActor?.Id ?? EntityIdFromRoute(routeValues);
+        var entityLabel = audit.EntityLabel ?? responseActor?.Username ?? entityId?.ToString();
 
         var user = http.User;
         var entry = new AuditEntry
         {
-            ActorUserId = actor.UserId,
-            ActorUsername = AuditDetails.SanitizeUsername(
-                user.FindFirstValue(ClaimTypes.Name) ?? actor.DisplayName),
-            ActorFullName = user.FindFirstValue("fullName"),
-            ActorRole = user.FindFirstValue(ClaimTypes.Role),
-            Action = failed && code == AuditActions.Login ? AuditActions.LoginFailed : code,
-            Category = AuditActions.CategoryFor(code),
+            ActorUserId = failedLogin ? null : responseActor?.Id ?? actor.UserId,
+            ActorUsername = failedLogin
+                ? AuditDetails.SanitizeAttemptedUsername(facts?.AttemptedUsername)
+                : AuditDetails.SanitizeUsername(
+                    responseActor?.Username ?? user.FindFirstValue(ClaimTypes.Name) ?? actor.DisplayName),
+            ActorFullName = AuditDetails.SanitizeText(
+                responseActor?.FullName ?? user.FindFirstValue("fullName"), 150),
+            ActorRole = AuditDetails.SanitizeText(
+                responseActor?.Role ?? user.FindFirstValue(ClaimTypes.Role), 50),
+            Action = action,
+            Category = AuditActions.CategoryFor(action),
             EntityType = entityType,
             EntityId = entityId,
             EntityLabel = entityLabel,
             Description = AuditDetails.SanitizeDescription(audit.Description) is { Length: > 0 } description
                 ? description
-                : GenericDescription(httpMethod, entityType, code),
+                : AuditActions.DescriptionFor(action),
             Outcome = failed ? "failure" : "success",
             HttpMethod = httpMethod,
             Path = AuditDetails.SanitizePath(path),
             StatusCode = statusCode,
             IpAddress = http.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AuditDetails.SanitizeUserAgent(facts?.UserAgent),
+            DurationMs = facts?.DurationMs,
             Details = AuditDetails.Sanitize(audit.Details)
         };
 
@@ -91,19 +101,5 @@ public static class AuditEntryFactory
         }
 
         return null;
-    }
-
-    private static string GenericDescription(string httpMethod, string? entityType, string code)
-    {
-        var verb = httpMethod switch
-        {
-            "POST" => "Created",
-            "PUT" or "PATCH" => "Updated",
-            "DELETE" => "Deleted",
-            "GET" => "Opened",
-            _ => "Changed"
-        };
-        var entity = entityType ?? code.Split('.')[0];
-        return $"{verb} {entity}";
     }
 }

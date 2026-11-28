@@ -13,10 +13,12 @@ namespace sales_portal.api.Controllers;
 public class CustomersController : ControllerBase
 {
     private readonly ICustomerService _customerService;
+    private readonly IAuditContext _audit;
 
-    public CustomersController(ICustomerService customerService)
+    public CustomersController(ICustomerService customerService, IAuditContext audit)
     {
         _customerService = customerService;
+        _audit = audit;
     }
 
     [HttpGet]
@@ -73,6 +75,7 @@ public class CustomersController : ControllerBase
         CancellationToken cancellationToken)
     {
         var customer = await _customerService.CreateAsync(request, cancellationToken);
+        _audit.SetEntity("customer", customer.Id, customer.Name);
         return CreatedAtAction(nameof(GetCustomer), new { id = customer.Id }, customer);
     }
 
@@ -85,6 +88,7 @@ public class CustomersController : ControllerBase
         CancellationToken cancellationToken)
     {
         var customer = await _customerService.UpdateAsync(id, request, cancellationToken);
+        if (customer is not null) _audit.SetEntity("customer", customer.Id, customer.Name);
         return customer == null ? NotFound() : Ok(customer);
     }
 
@@ -95,6 +99,8 @@ public class CustomersController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
+        var customer = await _customerService.GetByIdWithHistoryAsync(id, cancellationToken);
+        _audit.SetEntity("customer", id, customer?.Name);
         return await _customerService.DeleteAsync(id, cancellationToken)
             ? NoContent()
             : NotFound();

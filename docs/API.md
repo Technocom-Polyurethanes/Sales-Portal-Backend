@@ -912,32 +912,65 @@ writing a frame.
 
 ### System status (Admin)
 
-`GET /api/system/status` gives admins the diagnostics behind the anonymous `/health` smoke test:
-`status` (`Healthy`, `Degraded` or `Unhealthy`), `checkedAt`, `version`, `environment`,
-`uptimeSeconds`, `database` (`status` and `latencyMs`) and `live`. `live` carries `state`
-(`connected`, `disconnected` or `disabled`), `disabled`, `pollingFallback` (`true` only while a
-listener is down), and the individual `changes` and `notifications` listener states. A disconnected
-or disabled listener makes the overall status `Degraded`; a database that cannot be reached makes it
-`Unhealthy`. The endpoint
-never starts a listener, changes configuration or returns secrets.
+`GET /api/system/status` gives admins the diagnostics behind the anonymous `/health` smoke test.
+It requires `ManageUsers`: anonymous requests return `401`, Sales/Accountant `403`.
+The payload has `status` (`Healthy`, `Degraded` or `Unhealthy`), `checkedAt`, `version`,
+`apiVersion`, `commit`, `startedAt`, `environment`, `uptimeSeconds`, `database`, `live`,
+`realtime`, `audit`, `jobs`, `security` and `data`.
+
+- `version` equals `apiVersion`: the app/API version from the built assembly. `commit` is the
+  deployed short git SHA (`BUILD_COMMIT`, otherwise `SOURCE_COMMIT`) or `null` when absent or
+  unknown; `startedAt` is the process start time in UTC. The frontend footer version comes from
+  `frontend/package.json`, so the two versions may differ.
+- `database`: `status` (`Up`/`Down`), `latencyMs`, `latencyHistory` (last 20 probe samples),
+  `serverVersion`, `sizeBytes`, `connectionsUsed`, `connectionsMax`, `pendingMigrations`,
+  `lastMigration`.
+- `live`: `state` (`connected`, `disconnected` or `disabled`), `disabled`, `pollingFallback`
+  (`true` while a listener is down), the individual `changes` and `notifications` listener
+  states, `changesLastEventAt`, `notificationsLastEventAt`, `reconnectCount` and `lastError`.
+- `realtime`: `connectedClients`, `notificationQueueDepth`, `dropped`.
+- `audit`: `rowsTotal`, `queueDepth`, `dropped`, `lastWriteAt`, `retentionDays`.
+- `jobs`: `[{ "name", "lastRunAt", "durationMs", "result", "nextRunAt" }]` for the audit writer,
+  audit retention and notification publisher.
+- `security`: `failedSignIns24h`, `lastFailedSignInAt`, `activeUsers`, `inactiveUsers`.
+- `data`: `offers`, `customers`, `materials`, `activeUsers`.
+
+A disconnected or disabled listener makes the overall status `Degraded`; a database that cannot be
+reached makes it `Unhealthy`. Each probe is isolated: a failing probe yields `null` for that field
+(or `ok: false` on the internal probe) and never removes the rest of the payload. The endpoint
+never starts a listener or changes configuration, and returns no secrets, connection strings,
+raw exception text, usernames, IPs or tokens; `lastError` is only an exception type name.
+
 ### Audit log (Admin)
 
-Every mutating signed-in request, login attempt, password change failure and offer document open
-writes one append-only row. Reads, import previews, notification read state and `/api/audit-logs`
-itself are not audited. Rows snapshot the actor (`actorUserId`, `actorUsername`, `actorFullName`,
+All `/api/audit-logs` endpoints require `ManageUsers`: anonymous requests return `401`,
+Sales/Accountant `403`. Every mutating signed-in request, login attempt, password change failure
+and offer document open writes one append-only row. Reads, import previews, notification read state, the list,
+summary and filter endpoints are not audited; only the CSV export writes a row.
+
+Rows snapshot the actor (`actorUserId`, `actorUsername`, `actorFullName`,
 `actorRole`) plus `action`, `category`, `entityType`, `entityId`, `entityLabel`, `description`,
 `outcome` (`success`/`failure`), `httpMethod`, `path`, `statusCode`, `ipAddress`, `details` and
-`occurredAt`. Passwords, hashes, tokens, request bodies and authorization headers are never stored;
-`details` only holds a small sanitized dictionary of non-secret values. The IP is the socket address
-reported by ASP.NET Core; no forwarded-header middleware is configured. Rows are written by a
-background worker from a bounded queue, so a full queue drops new rows instead of failing the
-request. A failed write batch is retried up to three times and the queue is flushed on shutdown.
-A daily retention job deletes rows older than `Audit:RetentionDays` (default `365`; set to `0` to
-keep everything).
+`occurredAt`, and now also the raw `userAgent` header (nullable, max 256 chars) and `durationMs`.
+A successful login takes its actor from `LoginResponseDto`, including anonymous login; a failed
+login has a null `actorUserId` and keeps a sanitized attempted username (up to 100 chars) in
+`actorUsername`. Every action code has an explicit default `description`. Offer, customer,
+material, bank and user writes include `entityId` and `entityLabel` (reference/name/username).
+`audit.exported` is the action code for a CSV export, in the `audit` category. Passwords, hashes,
+tokens, request bodies and authorization headers are never stored; `details` only holds a small
+sanitized dictionary of non-secret values. The IP is the socket address reported by ASP.NET Core;
+no forwarded-header middleware is configured. Rows are written by a background worker from a
+bounded queue, so a full queue drops new rows instead of failing the request. A failed write batch
+is retried up to three times and the queue is flushed on shutdown. A daily retention job deletes
+rows older than `Audit:RetentionDays` (default `365`; set to `0` to keep everything).
+The `AddAuditUserAgent` migration adds nullable `user_agent varchar(256)` and `duration_ms integer`
+to `audit_logs`, with no backfill; the append-only trigger is unchanged.
 
 | Endpoint | Result |
 | --- | --- |
-| `GET /api/audit-logs` | Newest first. Filters: `from`, `to`, `actorId`, `category`, `action`, `entityType`, `outcome`, `search`, `page` (default `1`), `pageSize` (default `50`, max `200`). Returns `items`, `page`, `pageSize` and `totalCount`. |
+| `GET /api/audit-logs` | Newest first. Filters: `from`, `to`, `actorId`, `category`, `action`, `entityType`, `outcome`, `search`, `page` (default `1`), `pageSize` (default `50`, max `200`). Returns `items`, `page`, `pageSize` and `totalCount`. Each item also has `userAgentLabel` (a human label derived from the raw header, `"Unknown device"` when unrecognised), `durationMs` and `entityRoute`: `/offers/{id}`, `/customers/{id}`, `/materials/{id}`, `/banks/{id}` or `/users/{id}` only when the referenced entity still exists, otherwise `null`. Existence is resolved in one batched query per entity type. |
+| `GET /api/audit-logs/summary` | Same filters as the list, without paging. `{ "totalCount", "byAction", "byCategory", "byOutcome", "byActor", "byDay" }`; each group is `{ "key", "count" }`, limited to the top 20 by count for actions, categories and actors. `byDay` keys are `yyyy-MM-dd`, in ascending date order. |
+| `GET /api/audit-logs/export` | Same filters as the list, without paging. Streams a UTF-8 CSV (with BOM) as `text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="audit-log-YYYYMMDD-HHmm.csv"` and `Cache-Control: no-store`, capped at the 10,000 most recent matching rows. Columns: `occurred_at, actor, action, category, outcome, entity, description, path, status_code, duration_ms, user_agent`. Cells containing commas, quotes or line breaks are wrapped in double quotes with internal quotes doubled; cells starting with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with a single quote to neutralise spreadsheet formulas. Each call enqueues one `audit.exported` row with `details.rowCount` and `details.cap` and description `Exported N audit rows`. |
 | `GET /api/audit-logs/filters` | `{ "actors": [{ "id", "username", "fullName" }], "categories": [...], "actions": [...] }` for building the filter controls. |
 
 `GET /api/events` carries an `audit` change topic when a row is written or deleted. Descriptions are
@@ -991,6 +1024,13 @@ live updates still work in either case.
   frontend now displays.
 
 - New `GET /api/events` live-update stream (see Live updates). Nothing else changes.
+- Audit log: new `actor` details for login attempts, `userAgent`/`durationMs` columns,
+  `entityId`/`entityLabel` on entity writes, `audit.exported` action, and list-only
+  `userAgentLabel`/`durationMs`/`entityRoute`; new admin `GET /api/audit-logs/summary`
+  and `GET /api/audit-logs/export`.
+- System status: new `apiVersion`, `commit`, `startedAt`, `database` metrics, `live`
+  timestamps/error, `realtime`, `audit`, `jobs`, `security` and `data` payloads, with
+  isolated probes.
 
 Nothing else was removed or renamed. The only breaking change is the offer reference
 format and the required `offerType`; the next-sequence `year`/`month` parameters are

@@ -13,10 +13,12 @@ namespace sales_portal.api.Controllers;
 public class BanksController : ControllerBase
 {
     private readonly IBankAccountService _bankAccountService;
+    private readonly IAuditContext _audit;
 
-    public BanksController(IBankAccountService bankAccountService)
+    public BanksController(IBankAccountService bankAccountService, IAuditContext audit)
     {
         _bankAccountService = bankAccountService;
+        _audit = audit;
     }
 
     [HttpGet]
@@ -54,6 +56,7 @@ public class BanksController : ControllerBase
         CancellationToken cancellationToken)
     {
         var account = await _bankAccountService.CreateAsync(request, cancellationToken);
+        _audit.SetEntity("bank", account.Id, account.Bank);
         return CreatedAtAction(nameof(GetBank), new { id = account.Id }, account);
     }
 
@@ -66,6 +69,7 @@ public class BanksController : ControllerBase
         CancellationToken cancellationToken)
     {
         var account = await _bankAccountService.UpdateAsync(id, request, cancellationToken);
+        if (account is not null) _audit.SetEntity("bank", account.Id, account.Bank);
         return account == null ? NotFound() : Ok(account);
     }
 
@@ -76,6 +80,8 @@ public class BanksController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
+        var account = await _bankAccountService.GetByIdAsync(id, cancellationToken);
+        _audit.SetEntity("bank", id, account?.Bank);
         return await _bankAccountService.DeleteAsync(id, cancellationToken)
             ? NoContent()
             : NotFound();

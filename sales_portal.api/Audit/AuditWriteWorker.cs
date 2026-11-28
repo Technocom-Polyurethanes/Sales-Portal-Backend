@@ -146,6 +146,8 @@ public sealed class AuditWriteWorker(
         Path = entry.Path,
         StatusCode = entry.StatusCode,
         IpAddress = entry.IpAddress,
+        UserAgent = entry.UserAgent,
+        DurationMs = entry.DurationMs,
         Details = JsonSerializer.Serialize(entry.Details)
     };
 }

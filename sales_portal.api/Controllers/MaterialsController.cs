@@ -13,10 +13,12 @@ namespace sales_portal.api.Controllers;
 public class MaterialsController : ControllerBase
 {
     private readonly IMaterialService _materialService;
+    private readonly IAuditContext _audit;
 
-    public MaterialsController(IMaterialService materialService)
+    public MaterialsController(IMaterialService materialService, IAuditContext audit)
     {
         _materialService = materialService;
+        _audit = audit;
     }
 
     [HttpGet]
@@ -71,6 +73,7 @@ public class MaterialsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var material = await _materialService.CreateAsync(request, cancellationToken);
+        _audit.SetEntity("material", material.Id, $"{material.ItemCode} {material.Name}");
         return CreatedAtAction(nameof(GetMaterial), new { id = material.Id }, material);
     }
 
@@ -83,6 +86,7 @@ public class MaterialsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var material = await _materialService.UpdateAsync(id, request, cancellationToken);
+        if (material is not null) _audit.SetEntity("material", material.Id, $"{material.ItemCode} {material.Name}");
         return material == null ? NotFound() : Ok(material);
     }
 
@@ -93,6 +97,8 @@ public class MaterialsController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
+        var material = await _materialService.GetByIdAsync(id, cancellationToken);
+        _audit.SetEntity("material", id, material is null ? null : $"{material.ItemCode} {material.Name}");
         return await _materialService.DeleteAsync(id, cancellationToken)
             ? NoContent()
             : NotFound();
