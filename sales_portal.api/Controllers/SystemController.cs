@@ -178,7 +178,11 @@ public class SystemController(
     {
         return new SystemDataStatusDto
         {
-            Offers = await CountAsync("data.offers", () => db.Offers.CountAsync(cancellationToken), cancellationToken),
+            // One chain is one offer: counting rows would count every stored version.
+            Offers = await CountAsync(
+                "data.offers",
+                () => db.Offers.Select(offer => offer.RootOfferId).Distinct().CountAsync(cancellationToken),
+                cancellationToken),
             Customers = await CountAsync("data.customers", () => db.Customers.CountAsync(cancellationToken), cancellationToken),
             Materials = await CountAsync("data.materials", () => db.Materials.CountAsync(cancellationToken), cancellationToken),
             ActiveUsers = security.ActiveUsers
@@ -228,11 +232,14 @@ public class SystemController(
         return string.IsNullOrWhiteSpace(commit) ? null : commit;
     }
 
-    private static string ApiVersion()
+    private string ApiVersion()
     {
-        var version = typeof(SystemController).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        version = FirstNonEmpty(version, typeof(SystemController).Assembly.GetName().Version?.ToString());
+        var version = FirstNonEmpty(
+            configuration["App:Version"],
+            Environment.GetEnvironmentVariable("BUILD_VERSION"),
+            typeof(SystemController).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
+            typeof(SystemController).Assembly.GetName().Version?.ToString());
         return version.Split('+')[0];
     }
 

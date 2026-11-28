@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using sales_portal.api.Live;
+using sales_portal.infrastructure.Contexts;
 using Xunit;
 
 namespace SalesPortal.Tests;
@@ -98,6 +99,26 @@ public sealed class SystemStatusApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Offer_count_counts_chains_not_stored_versions()
+    {
+        using var factory = new SalesPortalApiFactory();
+        using var client = factory.CreateAuthenticatedClient();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var basics = TestFactory.SeedBasics(db);
+            TestFactory.AddOffer(db, basics, "Loc/1/2026/YL/TU", version: 1);
+            TestFactory.AddOffer(db, basics, "Loc/1/2026/YL/TU", version: 2);
+            TestFactory.AddOffer(db, basics, "Loc/2/2026/YL/TU", version: 1);
+        }
+
+        using var body = JsonDocument.Parse(await client.GetStringAsync("/api/system/status"));
+
+        Assert.Equal(2, body.RootElement.GetProperty("data").GetProperty("offers").GetInt32());
+    }
+
+    [Fact]
     public async Task Commit_comes_from_deployment_configuration()
     {
         using var factory = new ConfiguredApiFactory();
@@ -106,6 +127,28 @@ public sealed class SystemStatusApiTests : IDisposable
         using var body = JsonDocument.Parse(await client.GetStringAsync("/api/system/status"));
 
         Assert.Equal("abc123", body.RootElement.GetProperty("commit").GetString());
+    }
+
+    [Fact]
+    public async Task Version_comes_from_deployment_configuration()
+    {
+        using var factory = new VersionedApiFactory();
+        using var client = factory.CreateAuthenticatedClient();
+
+        using var body = JsonDocument.Parse(await client.GetStringAsync("/api/system/status"));
+
+        Assert.Equal("2.3.4", body.RootElement.GetProperty("version").GetString());
+        Assert.Equal("2.3.4", body.RootElement.GetProperty("apiVersion").GetString());
+    }
+
+    private sealed class VersionedApiFactory : SalesPortalApiFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
+                new Dictionary<string, string?> { ["App:Version"] = "2.3.4" }));
+        }
     }
 
     private sealed class ConfiguredApiFactory : SalesPortalApiFactory

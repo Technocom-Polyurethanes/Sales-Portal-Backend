@@ -50,8 +50,9 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 | `BOOTSTRAP_ADMIN_EMAIL` | (Optional, first-login only) Email of the admin. |
 | `Audit__RetentionDays` | Days of audit history kept by the daily cleanup job; default `365`. Set to `0` to keep all rows. |
 | `BUILD_COMMIT` | Short git SHA of the deployed build. `GET /api/system/status` returns it as `commit`, or `null` when absent/unknown. The API reads `App:Commit` first, then `BUILD_COMMIT`, then `SOURCE_COMMIT` as a fallback. |
+| `BUILD_VERSION` | Release version shown as `version`/`apiVersion` in `GET /api/system/status`. The API reads `App:Version` first, then `BUILD_VERSION`, then falls back to the built assembly version (`1.11.0`). |
 
-> `apiVersion` in `/api/system/status` is derived from the built assembly (and mirrored in `version`); it is independent of the frontend package version.
+> `apiVersion` in `/api/system/status` is mirrored in `version`. It is independent of the frontend package version; keep the two in step by setting `BUILD_VERSION` to the same release number.
 
 > **To verify:** The MonsterASP help pages (help.monsterasp.net) confirm Web Deploy on port 8172 and the environment variable mechanism. The availability of PostgreSQL depends on the specific hosting plan — **confirm with MonsterASP support that your plan includes PostgreSQL**.
 
