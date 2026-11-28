@@ -227,9 +227,20 @@ public class SystemController(
     {
         var commit = FirstNonEmpty(
             configuration["App:Commit"],
-            Environment.GetEnvironmentVariable("BUILD_COMMIT"),
-            Environment.GetEnvironmentVariable("SOURCE_COMMIT"));
+            configuration["BUILD_COMMIT"],
+            configuration["SOURCE_COMMIT"],
+            BuildCommit());
         return string.IsNullOrWhiteSpace(commit) ? null : commit;
+    }
+
+    private static string? BuildCommit()
+    {
+        var informational = typeof(SystemController).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var revision = informational?.Split('+').LastOrDefault();
+        return string.IsNullOrWhiteSpace(revision)
+            ? null
+            : revision[..Math.Min(7, revision.Length)];
     }
 
     private string ApiVersion()
