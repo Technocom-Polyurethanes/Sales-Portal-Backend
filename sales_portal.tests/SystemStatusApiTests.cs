@@ -28,6 +28,20 @@ public sealed class SystemStatusApiTests : IDisposable
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/system/status")).StatusCode);
     }
 
+    [Fact]
+    public async Task Api_version_follows_pr_commit_format()
+    {
+        using var client = _factory.CreateAuthenticatedClient();
+        using var body = JsonDocument.Parse(await client.GetStringAsync("/api/system/status"));
+
+        var parts = body.RootElement.GetProperty("apiVersion").GetString()!.Split('.');
+
+        Assert.Equal(3, parts.Length);
+        Assert.Equal("1", parts[0]);
+        Assert.True(int.TryParse(parts[1], out var pullRequest) && pullRequest > 0);
+        Assert.True(int.TryParse(parts[2], out var commits) && commits > 0);
+    }
+
     [Theory]
     [InlineData("disconnected", false, false, "Degraded", true)]
     [InlineData("connected", false, true, "Healthy", false)]

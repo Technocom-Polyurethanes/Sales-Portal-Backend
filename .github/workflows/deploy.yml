@@ -25,9 +25,22 @@ jobs:
   build-test:
     name: Build & test
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version script
+        shell: pwsh
+        run: ./scripts/Get-BuildVersion.ps1 -SelfTest
+
+      - name: Compute version
+        id: version
+        shell: pwsh
+        run: ./scripts/Get-BuildVersion.ps1 >> $env:GITHUB_OUTPUT
 
       # The projects target net8.0, but the .slnx solution format needs SDK 9.0.200+.
       # Installing both lets the 9.x SDK build the solution and the 8.x runtime run the tests.
@@ -42,18 +55,25 @@ jobs:
         run: dotnet restore "${{ env.SOLUTION }}"
 
       - name: Build
-        run: dotnet build "${{ env.SOLUTION }}" --configuration Release --no-restore
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet build "${{ env.SOLUTION }}" --configuration Release --no-restore -p:Version=$BUILD_VERSION
 
       - name: Test
-        run: dotnet test "${{ env.SOLUTION }}" --configuration Release --no-build --verbosity normal
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet test "${{ env.SOLUTION }}" --configuration Release --no-build --verbosity normal -p:Version=$BUILD_VERSION
 
       - name: Publish API
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: >
           dotnet publish "${{ env.API_PROJECT }}"
           --configuration Release
           --no-restore
           --output ./publish
           -p:UseAppHost=false
+          -p:Version=$BUILD_VERSION
 
       - name: Upload publish artifact
         if: github.event_name != 'pull_request'
