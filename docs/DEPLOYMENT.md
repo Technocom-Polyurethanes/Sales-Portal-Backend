@@ -50,9 +50,9 @@ Configure these in the MonsterASP control panel under **Scripting > Environment 
 | `BOOTSTRAP_ADMIN_EMAIL` | (Optional, first-login only) Email of the admin. |
 | `Audit__RetentionDays` | Days of audit history kept by the daily cleanup job; default `365`. Set to `0` to keep all rows. |
 | `BUILD_COMMIT` | Short git SHA of the deployed build. `GET /api/system/status` returns it as `commit`, or `null` when absent/unknown. The API reads `App:Commit` first, then `BUILD_COMMIT`, then `SOURCE_COMMIT` as a fallback. |
-| `BUILD_VERSION` | Release version shown as `version`/`apiVersion` in `GET /api/system/status`. The API reads `App:Version` first, then `BUILD_VERSION`, then falls back to the built assembly version (`1.11.0`). |
+| `BUILD_VERSION` | Optional override for `version`/`apiVersion` in `GET /api/system/status`. The API reads `App:Version` first, then `BUILD_VERSION`, then falls back to the built assembly version (`1.30.2`), which CI derives from the PR number and commit count. |
 
-> `apiVersion` in `/api/system/status` is mirrored in `version`. It is independent of the frontend package version; keep the two in step by setting `BUILD_VERSION` to the same release number.
+> `apiVersion` in `/api/system/status` is mirrored in `version`. CI builds it as `1.<PR number>.<commits in PR>` (for example PR #30 with two commits → `1.30.2`): pull request builds read the event payload, and `master` builds read the latest `Merge pull request #N` commit and count commits between its parents. Keep merge commits when merging to `master`; squash/rebase merges need `BUILD_VERSION` set manually. It is independent of the frontend package version.
 
 > **To verify:** The MonsterASP help pages (help.monsterasp.net) confirm Web Deploy on port 8172 and the environment variable mechanism. The availability of PostgreSQL depends on the specific hosting plan — **confirm with MonsterASP support that your plan includes PostgreSQL**.
 

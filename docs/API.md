@@ -918,8 +918,10 @@ The payload has `status` (`Healthy`, `Degraded` or `Unhealthy`), `checkedAt`, `v
 `apiVersion`, `commit`, `startedAt`, `environment`, `uptimeSeconds`, `database`, `live`,
 `realtime`, `audit`, `jobs`, `security` and `data`.
 
-- `version` equals `apiVersion`: the app/API version from the built assembly. `commit` is the
-  deployed short git SHA (`BUILD_COMMIT`, otherwise `SOURCE_COMMIT`) or `null` when absent or
+- `version` equals `apiVersion`: the app/API version, formatted `1.<PR number>.<commits in PR>`
+  (for example `1.30.2`). CI derives it from the pull request event, or from the merge commit on
+  `master`, and builds it into the assembly; `BUILD_VERSION` can override it at runtime. `commit`
+  is the deployed short git SHA (`BUILD_COMMIT`, otherwise `SOURCE_COMMIT`) or `null` when absent or
   unknown; `startedAt` is the process start time in UTC. The frontend footer version comes from
   `frontend/package.json`, so the two versions may differ.
 - `database`: `status` (`Up`/`Down`), `latencyMs`, `latencyHistory` (last 20 probe samples),
